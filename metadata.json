@@ -1,0 +1,6 @@
+{
+  "name": "Logistics Framework",
+  "description": "Plataforma de comando y optimización para la gestión de flotas, seguimiento de carga y control operativo de transporte de alta visibilidad.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
