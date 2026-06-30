@@ -546,6 +546,27 @@ const getSgiComplianceBarColor = (rate: number): string => {
   return '#006b3d';
 };
 
+const getGreenBarColor = (value: number, minValue: number, maxValue: number): string => {
+  const intensity = maxValue === minValue ? 1 : (value - minValue) / (maxValue - minValue);
+  const barLightness = 58 - intensity * 38;
+  const barSaturation = 72 + intensity * 24;
+  return `hsl(150, ${barSaturation}%, ${barLightness}%)`;
+};
+
+const getScaledBarHeight = (value: number, maxValue: number, minHeight = 6): number =>
+  maxValue <= 0 ? minHeight : Math.max((value / maxValue) * 100, minHeight);
+
+const normalizeSgiTopicLabel = (topic: string): string => {
+  if (/tamizaje/i.test(topic)) return 'Tamizajes';
+  return topic;
+};
+
+/** Activar solo cuando se solicite explícitamente el acceso de modo prueba. */
+const ENABLE_DEMO_MODE_ENTRY = false;
+
+const isEmpresturEmail = (email: string): boolean =>
+  /^[^\s@]+@emprestur\.com$/i.test(email.trim());
+
 export default function App() {
   const serviceMenuItems = [
     'Acompañamiento presencial',
@@ -593,6 +614,9 @@ export default function App() {
   const sgiDonutRef = useRef<HTMLDivElement | null>(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [isRegisterSubmitting, setIsRegisterSubmitting] = useState(false);
+  const [registerEmail, setRegisterEmail] = useState('');
+  const [registerError, setRegisterError] = useState('');
+  const [registeredUserEmail, setRegisteredUserEmail] = useState('');
   const [isDbTestConnected, setIsDbTestConnected] = useState(false);
   const [showDbDetailPanel, setShowDbDetailPanel] = useState(false);
   const [isDemoExcelLoading, setIsDemoExcelLoading] = useState(false);
@@ -2020,8 +2044,9 @@ export default function App() {
         .map((topic) => topic.trim())
         .filter((topic) => topic.length > 3);
       normalizedTopics.forEach((topic) => {
-        const current = topicsCounter.get(topic) ?? 0;
-        topicsCounter.set(topic, current + 1);
+        const groupedTopic = normalizeSgiTopicLabel(topic);
+        const current = topicsCounter.get(groupedTopic) ?? 0;
+        topicsCounter.set(groupedTopic, current + 1);
       });
     });
 
@@ -2530,9 +2555,33 @@ export default function App() {
   };
 
   const handleRegisterSubmit = async () => {
+    const email = registerEmail.trim();
+    if (!email) {
+      setRegisterError('Ingresa tu correo corporativo.');
+      return;
+    }
+    if (!isEmpresturEmail(email)) {
+      setRegisterError('Solo se permiten correos con dominio @emprestur.com.');
+      return;
+    }
+
+    setRegisterError('');
     setIsRegisterSubmitting(true);
     try {
-      // Acceso demo directo para entorno de pruebas.
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      setRegisteredUserEmail(email.toLowerCase());
+      setIsDbTestConnected(true);
+      setShowDbDetailPanel(true);
+      setShowRegisterModal(false);
+      setRegisterEmail('');
+    } finally {
+      setIsRegisterSubmitting(false);
+    }
+  };
+
+  const handleDemoModeEntry = async () => {
+    setIsRegisterSubmitting(true);
+    try {
       await new Promise((resolve) => setTimeout(resolve, 700));
       setIsDbTestConnected(true);
       setShowDbDetailPanel(true);
@@ -3245,17 +3294,22 @@ export default function App() {
                   setIsDbTestConnected(false);
                   setShowDbDetailPanel(false);
                   setShowRegisterModal(false);
+                  setRegisteredUserEmail('');
+                  setRegisterEmail('');
+                  setRegisterError('');
                   return;
                 }
+                setRegisterError('');
+                setRegisterEmail('');
                 setShowRegisterModal(true);
               }}
               className="bg-[#ffd000] text-[#00502c] hover:bg-[#f5c400] px-3.5 py-1.5 rounded-soft border border-[#ffe786] text-[11px] font-bold uppercase tracking-wider transition-colors"
             >
-              {isDbTestConnected ? 'Salir de modo demo' : 'Registrarse'}
+              {isDbTestConnected ? 'Cerrar sesión' : 'Registrarse'}
             </button>
-            {isDbTestConnected && (
+            {isDbTestConnected && registeredUserEmail && (
               <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-soft border border-emerald-300 text-[10px] font-bold uppercase tracking-wider">
-                DB Prueba Conectada
+                {registeredUserEmail}
               </span>
             )}
           </div>
@@ -4804,39 +4858,42 @@ export default function App() {
                   <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
                     <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Clientes con mayor actividad</p>
                     <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
-                      <div className="h-56 flex items-end gap-4 justify-between overflow-x-auto">
-                        {sstClientStats.map((row) => (
-                          (() => {
-                            const maxRate = Math.max(...sstClientStats.map((item) => item.accompanimentRate), 1);
-                            const minRate = Math.min(...sstClientStats.map((item) => item.accompanimentRate));
-                            const intensity = maxRate === minRate ? 1 : (row.accompanimentRate - minRate) / (maxRate - minRate);
-                            const barLightness = 58 - intensity * 38; // claro -> intenso
-                            const barSaturation = 72 + intensity * 24;
-                            const barColor = `hsl(150, ${barSaturation}%, ${barLightness}%)`;
+                      {(() => {
+                        const maxRate = Math.max(...sstClientStats.map((item) => item.accompanimentRate), 1);
+                        const minRate = Math.min(...sstClientStats.map((item) => item.accompanimentRate));
 
-                            return (
-                              <div key={row.client} className="flex-1 min-w-[100px] flex flex-col items-center">
-                                <div className="text-[10px] font-mono text-[#00502c] mb-1">
-                                  {row.accompanimentRate.toFixed(1)}%
-                                </div>
-                                <div className="h-40 w-full flex items-end justify-center">
-                                  <div
-                                    className="rounded-t-sm"
-                                    style={{ width: '54px', height: `${Math.max(row.accompanimentRate, 4)}%`, backgroundColor: barColor }}
-                                    title={`${row.client}: cobertura ${row.accompanimentRate.toFixed(1)}%`}
-                                  />
-                                </div>
-                                <div className="mt-2 text-[11px] text-center text-gray-700 leading-tight line-clamp-2">
-                                  {row.client}
-                                </div>
-                                <div className="text-[11px] text-gray-500">
-                                  {row.total} visitas
-                                </div>
-                              </div>
-                            );
-                          })()
-                        ))}
-                      </div>
+                        return (
+                          <div className="overflow-x-auto py-1">
+                            <div className="flex gap-4 justify-between min-w-max px-1">
+                              {sstClientStats.map((row) => {
+                                const barColor = getGreenBarColor(row.accompanimentRate, minRate, maxRate);
+                                const barHeight = getScaledBarHeight(row.accompanimentRate, maxRate);
+
+                                return (
+                                  <div key={row.client} className="min-w-[100px] w-[100px] flex flex-col items-center">
+                                    <div className="h-44 w-full flex flex-col justify-end items-center">
+                                      <div className="text-[10px] font-mono text-[#00502c] mb-1 shrink-0 leading-none">
+                                        {row.accompanimentRate.toFixed(1)}%
+                                      </div>
+                                      <div
+                                        className="rounded-t-sm w-[54px] shrink-0"
+                                        style={{ height: `${barHeight}%`, minHeight: '6px', backgroundColor: barColor }}
+                                        title={`${row.client}: cobertura ${row.accompanimentRate.toFixed(1)}%`}
+                                      />
+                                    </div>
+                                    <div className="mt-2 text-[11px] text-center text-gray-700 leading-tight line-clamp-2">
+                                      {row.client}
+                                    </div>
+                                    <div className="text-[11px] text-gray-500">
+                                      {row.total} visitas
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -4872,34 +4929,33 @@ export default function App() {
                           No hay datos mensuales disponibles para graficar.
                         </div>
                       ) : (
-                        <div className="h-64 flex items-end gap-4 justify-between">
-                          {sstMonthlyImpact.map((month) => {
-                            const maxValue = Math.max(...sstMonthlyImpact.map((item) => item.impacted), 1);
-                            const minValue = Math.min(...sstMonthlyImpact.map((item) => item.impacted));
-                            const height = (month.impacted / maxValue) * 100;
-                            const intensity = maxValue === minValue ? 1 : (month.impacted - minValue) / (maxValue - minValue);
-                            const barLightness = 58 - intensity * 38; // 58% (muy claro) -> 20% (muy intenso)
-                            const barSaturation = 72 + intensity * 24; // 72% -> 96%
-                            const barColor = `hsl(150, ${barSaturation}%, ${barLightness}%)`;
-                            return (
-                              <div key={month.label} className="flex-1 min-w-[88px] flex flex-col items-center">
-                                <div className="text-[11px] font-mono text-gray-700 mb-1">{month.impacted}</div>
-                                <div className="h-44 w-full flex items-end justify-center">
-                                  <div
-                                    className="rounded-t-sm"
-                                    style={{
-                                      width: '58px',
-                                      height: `${Math.max(height, 6)}%`,
-                                      backgroundColor: barColor
-                                    }}
-                                    title={`${month.label.toUpperCase()}: ${month.impacted} personas (${month.visits} visitas)`}
-                                  />
+                        <div className="overflow-x-auto py-1">
+                          <div className="flex gap-4 justify-between min-w-max px-1">
+                            {sstMonthlyImpact.map((month) => {
+                              const maxValue = Math.max(...sstMonthlyImpact.map((item) => item.impacted), 1);
+                              const minValue = Math.min(...sstMonthlyImpact.map((item) => item.impacted));
+                              const barHeight = getScaledBarHeight(month.impacted, maxValue);
+                              const barColor = getGreenBarColor(month.impacted, minValue, maxValue);
+                              return (
+                                <div key={month.label} className="min-w-[88px] w-[88px] flex flex-col items-center">
+                                  <div className="h-44 w-full flex flex-col justify-end items-center">
+                                    <div className="text-[11px] font-mono text-gray-700 mb-1 shrink-0 leading-none">{month.impacted}</div>
+                                    <div
+                                      className="rounded-t-sm w-[58px] shrink-0"
+                                      style={{
+                                        height: `${barHeight}%`,
+                                        minHeight: '6px',
+                                        backgroundColor: barColor
+                                      }}
+                                      title={`${month.label.toUpperCase()}: ${month.impacted} personas (${month.visits} visitas)`}
+                                    />
+                                  </div>
+                                  <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
+                                  <div className="text-[11px] text-gray-500">{month.visits} visitas</div>
                                 </div>
-                                <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
-                                <div className="text-[11px] text-gray-500">{month.visits} visitas</div>
-                              </div>
-                            );
-                          })}
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -7042,10 +7098,14 @@ export default function App() {
         <div className="fixed inset-0 z-[70] bg-black/35 backdrop-blur-[1px] flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white rounded-soft border border-[#eaecf0] shadow-lg">
             <div className="px-4 py-3 border-b border-[#eaecf0] flex items-center justify-between">
-              <h3 className="text-sm font-bold text-[#191c1d]">Registro para base de datos (modo prueba)</h3>
+              <h3 className="text-sm font-bold text-[#191c1d]">Registro para base de datos</h3>
               <button
                 type="button"
-                onClick={() => setShowRegisterModal(false)}
+                onClick={() => {
+                  setShowRegisterModal(false);
+                  setRegisterError('');
+                  setRegisterEmail('');
+                }}
                 className="text-gray-500 hover:text-gray-700 text-lg leading-none"
                 aria-label="Cerrar"
               >
@@ -7055,25 +7115,64 @@ export default function App() {
 
             <div className="p-4 space-y-3">
               <p className="text-sm text-gray-700">
-                Modo demo habilitado. No necesitas correo ni contraseña para ingresar a la base de datos de prueba.
+                Ingresa tu correo corporativo Emprestur para acceder a la base de datos del tablero SGI.
               </p>
+              <div>
+                <label htmlFor="register-email" className="block text-xs font-semibold text-gray-600 mb-1">
+                  Correo electrónico
+                </label>
+                <input
+                  id="register-email"
+                  type="email"
+                  value={registerEmail}
+                  onChange={(event) => {
+                    setRegisterEmail(event.target.value);
+                    if (registerError) setRegisterError('');
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void handleRegisterSubmit();
+                  }}
+                  placeholder="nombre@emprestur.com"
+                  autoComplete="email"
+                  className="w-full px-3 py-2 text-sm border border-[#d6dce5] rounded-soft focus:outline-none focus:ring-2 focus:ring-[#006b3d]/30 focus:border-[#006b3d]"
+                />
+                {registerError && (
+                  <p className="mt-1.5 text-xs text-red-600 font-medium">{registerError}</p>
+                )}
+              </div>
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => setShowRegisterModal(false)}
+                  onClick={() => {
+                    setShowRegisterModal(false);
+                    setRegisterError('');
+                    setRegisterEmail('');
+                  }}
                   className="px-3 py-2 text-xs font-semibold border border-[#d6dce5] rounded-soft text-gray-700 hover:bg-gray-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="button"
-                  onClick={handleRegisterSubmit}
+                  onClick={() => void handleRegisterSubmit()}
                   disabled={isRegisterSubmitting}
                   className="px-3 py-2 text-xs font-semibold rounded-soft border border-[#006b3d] bg-[#006b3d] text-white hover:bg-[#00502c] disabled:opacity-60"
                 >
-                  {isRegisterSubmitting ? 'Conectando...' : 'Ingresar modo prueba'}
+                  {isRegisterSubmitting ? 'Registrando...' : 'Registrarse'}
                 </button>
               </div>
+              {ENABLE_DEMO_MODE_ENTRY && (
+                <div className="pt-2 border-t border-[#eaecf0]">
+                  <button
+                    type="button"
+                    onClick={() => void handleDemoModeEntry()}
+                    disabled={isRegisterSubmitting}
+                    className="w-full px-3 py-2 text-xs font-semibold rounded-soft border border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    Ingresar modo prueba
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
