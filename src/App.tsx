@@ -80,6 +80,13 @@ import {
 } from './formacionInformeDemo.ts';
 import { DemoExcelUploadButton } from './DemoExcelUploadButton.tsx';
 import { importDemoExcelForService, type SgiDemoExcelService } from './sgiDemoExcelImport.ts';
+import { isSupabaseConfigured, SGI_SESSION_EMAIL_KEY } from './supabase/client.ts';
+import {
+  loadSgiDatasetsFromSupabase,
+  persistSgiDatasetsToSupabase,
+  registerUserEmail,
+  type SgiPersistedDatasets
+} from './supabase/sgiPersistence.ts';
 
 type IncapInformeByYear = Record<string, unknown[][]>;
 
@@ -612,6 +619,7 @@ export default function App() {
   const [incapYearFilter, setIncapYearFilter] = useState('');
   const [formacionYearFilter, setFormacionYearFilter] = useState('');
   const sgiDonutRef = useRef<HTMLDivElement | null>(null);
+  const supabaseSyncReadyRef = useRef(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [isRegisterSubmitting, setIsRegisterSubmitting] = useState(false);
   const [registerEmail, setRegisterEmail] = useState('');
@@ -981,6 +989,101 @@ export default function App() {
   }, []);
 
   const [formacionRecords, setFormacionRecords] = useState<FormacionRecord[]>(() => initialFormacionRecords);
+
+  const buildSgiDatasetBaselines = (): SgiPersistedDatasets => ({
+    acompanamiento: initialSstVisits,
+    comportamientos: initialUnsafeBehaviorRecords,
+    incapacidades: initialIncapRecords,
+    formacion: initialFormacionRecords,
+    incapInformeEdits: {},
+    formacionInformeEdits: {}
+  });
+
+  const applySgiDatasetsFromSupabase = (datasets: SgiPersistedDatasets) => {
+    setSstVisits(datasets.acompanamiento as SstVisitRecord[]);
+    setUnsafeBehaviorRecords(datasets.comportamientos as UnsafeBehaviorRecord[]);
+    setIncapRecords(datasets.incapacidades as IncapRecord[]);
+    setFormacionRecords(datasets.formacion as FormacionRecord[]);
+    setIncapDemoInformeEdits(
+      datasets.incapInformeEdits as Record<number, Partial<IncapInformeMonthlyInputs & IncapInformeManualBdEdits>>
+    );
+    setFormacionDemoInformeEdits(
+      datasets.formacionInformeEdits as Record<number, Partial<FormacionInformeMonthlyInputs>>
+    );
+  };
+
+  const connectSgiSupabaseSession = async (
+    email: string
+  ): Promise<{ ok: true } | { ok: false; error: string }> => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!isSupabaseConfigured()) {
+      setRegisteredUserEmail(normalizedEmail);
+      setIsDbTestConnected(true);
+      setShowDbDetailPanel(true);
+      supabaseSyncReadyRef.current = false;
+      return { ok: true };
+    }
+
+    const regResult = await registerUserEmail(normalizedEmail);
+    if (!regResult.ok) {
+      return { ok: false, error: regResult.error ?? 'No se pudo registrar el correo.' };
+    }
+
+    supabaseSyncReadyRef.current = false;
+    const datasets = await loadSgiDatasetsFromSupabase(buildSgiDatasetBaselines());
+    applySgiDatasetsFromSupabase(datasets);
+    localStorage.setItem(SGI_SESSION_EMAIL_KEY, normalizedEmail);
+    setRegisteredUserEmail(normalizedEmail);
+    setIsDbTestConnected(true);
+    setShowDbDetailPanel(true);
+    supabaseSyncReadyRef.current = true;
+    return { ok: true };
+  };
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    const savedEmail = localStorage.getItem(SGI_SESSION_EMAIL_KEY);
+    if (!savedEmail || !isEmpresturEmail(savedEmail)) return;
+
+    void connectSgiSupabaseSession(savedEmail).catch((error) => {
+      console.error('Error restaurando sesión SGI:', error);
+      localStorage.removeItem(SGI_SESSION_EMAIL_KEY);
+    });
+    // Restaurar sesión guardada al iniciar la aplicación.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured() || !isDbTestConnected || !registeredUserEmail || !supabaseSyncReadyRef.current) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void persistSgiDatasetsToSupabase(
+        {
+          acompanamiento: sstVisits,
+          comportamientos: unsafeBehaviorRecords,
+          incapacidades: incapRecords,
+          formacion: formacionRecords,
+          incapInformeEdits: incapDemoInformeEdits,
+          formacionInformeEdits: formacionDemoInformeEdits
+        },
+        registeredUserEmail
+      ).catch((error) => console.error('Error guardando datos SGI en Supabase:', error));
+    }, 1200);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    sstVisits,
+    unsafeBehaviorRecords,
+    incapRecords,
+    formacionRecords,
+    incapDemoInformeEdits,
+    formacionDemoInformeEdits,
+    isDbTestConnected,
+    registeredUserEmail
+  ]);
 
   const unsafeFilteredRecords = useMemo(() => {
     const selectedYear = Number(unsafeYearFilter);
@@ -2568,12 +2671,16 @@ export default function App() {
     setRegisterError('');
     setIsRegisterSubmitting(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 700));
-      setRegisteredUserEmail(email.toLowerCase());
-      setIsDbTestConnected(true);
-      setShowDbDetailPanel(true);
+      const result = await connectSgiSupabaseSession(email);
+      if (!result.ok) {
+        setRegisterError('error' in result ? result.error : 'No se pudo registrar el correo.');
+        return;
+      }
       setShowRegisterModal(false);
       setRegisterEmail('');
+    } catch (error) {
+      console.error('Error en registro SGI:', error);
+      setRegisterError('No se pudo completar el registro. Verifica la conexión con Supabase.');
     } finally {
       setIsRegisterSubmitting(false);
     }
@@ -3297,6 +3404,8 @@ export default function App() {
                   setRegisteredUserEmail('');
                   setRegisterEmail('');
                   setRegisterError('');
+                  localStorage.removeItem(SGI_SESSION_EMAIL_KEY);
+                  supabaseSyncReadyRef.current = false;
                   return;
                 }
                 setRegisterError('');
