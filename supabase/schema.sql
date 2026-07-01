@@ -1,4 +1,5 @@
 -- Ejecutar en Supabase: SQL Editor > New query
+-- Seguro para ejecutar más de una vez (idempotente)
 
 create table if not exists public.registered_users (
   id uuid primary key default gen_random_uuid(),
@@ -16,6 +17,14 @@ create table if not exists public.sgi_datasets (
 
 alter table public.registered_users enable row level security;
 alter table public.sgi_datasets enable row level security;
+
+drop policy if exists "anon_select_registered_users" on public.registered_users;
+drop policy if exists "anon_insert_registered_users" on public.registered_users;
+drop policy if exists "anon_update_registered_users" on public.registered_users;
+
+drop policy if exists "anon_select_sgi_datasets" on public.sgi_datasets;
+drop policy if exists "anon_insert_sgi_datasets" on public.sgi_datasets;
+drop policy if exists "anon_update_sgi_datasets" on public.sgi_datasets;
 
 create policy "anon_select_registered_users"
   on public.registered_users for select to anon using (true);

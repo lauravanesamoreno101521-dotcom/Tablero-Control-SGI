@@ -2664,7 +2664,7 @@ export default function App() {
       return;
     }
     if (!isEmpresturEmail(email)) {
-      setRegisterError('Solo se permiten correos con dominio @emprestur.com.');
+      setRegisterError('error en registro de correo electronico');
       return;
     }
 
@@ -3379,17 +3379,6 @@ export default function App() {
               <Clock size={15} className="text-[#ffd000]" />
               <span className="font-mono font-medium text-emerald-50">
                 {currentTime.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })} — {currentTime.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-              </span>
-            </div>
-
-            {/* Status signal indicator */}
-            <div className="flex items-center gap-2 bg-[#006b3d] px-3 py-1.5 rounded-soft border border-emerald-700/50">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
-              </span>
-              <span className="font-mono text-[11px] text-emerald-100 uppercase tracking-wider font-semibold">
-                NODO_CENTRAL: ONLINE
               </span>
             </div>
 
@@ -7224,7 +7213,7 @@ export default function App() {
 
             <div className="p-4 space-y-3">
               <p className="text-sm text-gray-700">
-                Ingresa tu correo corporativo Emprestur para acceder a la base de datos del tablero SGI.
+                Ingresa tu correo corporativo para acceder a la base de datos del tablero SGI.
               </p>
               <div>
                 <label htmlFor="register-email" className="block text-xs font-semibold text-gray-600 mb-1">
@@ -7237,6 +7226,12 @@ export default function App() {
                   onChange={(event) => {
                     setRegisterEmail(event.target.value);
                     if (registerError) setRegisterError('');
+                  }}
+                  onBlur={() => {
+                    const email = registerEmail.trim();
+                    if (email && !isEmpresturEmail(email)) {
+                      setRegisterError('error en registro de correo electronico');
+                    }
                   }}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') void handleRegisterSubmit();
