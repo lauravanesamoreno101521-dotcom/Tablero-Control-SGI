@@ -84,11 +84,6 @@ export default function SgiAuthScreen({
                 <h2 className="text-lg font-bold text-[#191c1d]">
                   {isLogin ? 'Bienvenido de nuevo' : 'Crear cuenta corporativa'}
                 </h2>
-                <p className="text-sm text-gray-600 mt-1">
-                  {isLogin
-                    ? 'Ingresa con tu correo @emprestur.com y contraseña.'
-                    : 'El registro asigna rol Visualizador por defecto. Un administrador puede elevar permisos después.'}
-                </p>
               </div>
 
               {!isLogin && (
@@ -120,7 +115,7 @@ export default function SgiAuthScreen({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') onSubmit();
                   }}
-                  placeholder="nombre@emprestur.com"
+                  placeholder="Correo electrónico"
                   autoComplete="email"
                   className="w-full px-3 py-2 text-sm border border-[#d6dce5] rounded-soft focus:outline-none focus:ring-2 focus:ring-[#006b3d]/30 focus:border-[#006b3d]"
                 />
@@ -188,16 +183,6 @@ export default function SgiAuthScreen({
                     ? 'Iniciar sesión'
                     : 'Crear cuenta'}
               </button>
-
-              <div className="rounded-soft bg-[#f8f9fa] border border-[#eaecf0] px-3 py-2 text-[11px] text-gray-600">
-                <p className="font-semibold text-[#00502c] mb-1">Roles del tablero</p>
-                <p>
-                  <span className="font-semibold">Visualizador</span> — consulta indicadores (rol por defecto al registrarse).
-                </p>
-                <p className="mt-1">
-                  <span className="font-semibold">Administrador</span> — edita bases de datos e informes (asignado por un admin).
-                </p>
-              </div>
             </div>
           </div>
         </div>

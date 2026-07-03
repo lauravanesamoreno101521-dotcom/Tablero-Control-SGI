@@ -116,6 +116,22 @@ import {
   type AccidentalidadInformeSection,
   type AccidentalidadRecord
 } from './accidentalidadInformeDemo.ts';
+import medicinaTrabajoBdRaw from './medicinaTrabajoBdData.json';
+import {
+  buildMedicinaIndicators,
+  buildMedicinaMonthlyTrend,
+  filterMedicinaRecords,
+  formatMedicinaCurrency,
+  getMedicinaCityOptions,
+  getMedicinaYearOptions,
+  getMedicinaExpiryStylesForRecord,
+  groupMedicinaRecords,
+  MEDICINA_MONTH_NAMES,
+  resolveMedicinaReferenceDate,
+  resolveMedicinaTrendYear,
+  type MedicinaTrabajoRecord
+} from './medicinaTrabajoDemo.ts';
+import MedicinaTrabajoSection from './components/MedicinaTrabajoSection.tsx';
 
 type IncapInformeByYear = Record<string, unknown[][]>;
 
@@ -365,6 +381,23 @@ type AccidentalidadForm = {
   basicCause: string;
   immediateCause: string;
   riskDescription: string;
+};
+
+type MedicinaTrabajoForm = {
+  documento: string;
+  employeeName: string;
+  city: string;
+  role: string;
+  entryDate: string;
+  contract: string;
+  linkType: string;
+  examDate: string;
+  examStatus: string;
+  postIncapacidad: string;
+  ips: string;
+  cost: string;
+  periodicYears: string;
+  expiryDate: string;
 };
 
 const INCAP_DB_FIELD_CLASS = 'w-full min-w-0 max-w-full border border-[#d6dce5] rounded-soft px-1 py-1 bg-white text-[10px]';
@@ -733,6 +766,7 @@ export default function App() {
   const serviceMenuItems = [
     'Acompañamiento presencial',
     'Accidentalidad',
+    'Medicina del trabajo',
     'Comportamientos inseguros',
     'Incapacidades',
     'Formación'
@@ -775,6 +809,10 @@ export default function App() {
   const [incapYearFilter, setIncapYearFilter] = useState('');
   const [formacionYearFilter, setFormacionYearFilter] = useState('');
   const [accidentalidadYearFilter, setAccidentalidadYearFilter] = useState('');
+  const [medicinaYearFilter, setMedicinaYearFilter] = useState('');
+  const [medicinaMonthFilter, setMedicinaMonthFilter] = useState('');
+  const [medicinaCityFilter, setMedicinaCityFilter] = useState('');
+  const [medicinaAlertFilter, setMedicinaAlertFilter] = useState<'all' | 'vencido' | 'este_mes' | 'proximo_mes'>('all');
   const sgiDonutRef = useRef<HTMLDivElement | null>(null);
   const supabaseSyncReadyRef = useRef(false);
   const [authBootstrapping, setAuthBootstrapping] = useState(() => isSupabaseConfigured());
@@ -874,6 +912,23 @@ export default function App() {
     basicCause: '',
     immediateCause: '',
     riskDescription: ''
+  });
+  const [editingMedicinaId, setEditingMedicinaId] = useState<string | null>(null);
+  const [medicinaForm, setMedicinaForm] = useState<MedicinaTrabajoForm>({
+    documento: '',
+    employeeName: '',
+    city: '',
+    role: '',
+    entryDate: '',
+    contract: '',
+    linkType: '',
+    examDate: '',
+    examStatus: '',
+    postIncapacidad: '',
+    ips: '',
+    cost: '',
+    periodicYears: '1',
+    expiryDate: ''
   });
   const [incapForm, setIncapForm] = useState<IncapForm>({
     incapDate: '',
@@ -1191,12 +1246,32 @@ export default function App() {
     () => initialAccidentalidadRecords
   );
 
+  const initialMedicinaTrabajoRecords = useMemo((): MedicinaTrabajoRecord[] => {
+    return (Array.isArray(medicinaTrabajoBdRaw) ? medicinaTrabajoBdRaw : []).map((row) => {
+      const record = row as MedicinaTrabajoRecord;
+      return {
+        ...record,
+        examMonth: record.examMonth ?? 0,
+        examYear: record.examYear ?? 0,
+        expiryMonth: record.expiryMonth ?? 0,
+        expiryYear: record.expiryYear ?? 0,
+        cost: Number(record.cost) || 0,
+        periodicYears: Number(record.periodicYears) || 1
+      };
+    });
+  }, []);
+
+  const [medicinaTrabajoRecords, setMedicinaTrabajoRecords] = useState<MedicinaTrabajoRecord[]>(
+    () => initialMedicinaTrabajoRecords
+  );
+
   const buildSgiDatasetBaselines = (): SgiPersistedDatasets => ({
     acompanamiento: initialSstVisits,
     comportamientos: initialUnsafeBehaviorRecords,
     incapacidades: initialIncapRecords,
     formacion: initialFormacionRecords,
     accidentalidad: initialAccidentalidadRecords,
+    medicinaTrabajo: initialMedicinaTrabajoRecords,
     incapInformeEdits: {},
     formacionInformeEdits: {}
   });
@@ -1207,6 +1282,7 @@ export default function App() {
     setIncapRecords(datasets.incapacidades as IncapRecord[]);
     setFormacionRecords(datasets.formacion as FormacionRecord[]);
     setAccidentalidadRecords(datasets.accidentalidad as AccidentalidadRecord[]);
+    setMedicinaTrabajoRecords(datasets.medicinaTrabajo as MedicinaTrabajoRecord[]);
     setIncapDemoInformeEdits(
       datasets.incapInformeEdits as Record<number, Partial<IncapInformeMonthlyInputs & IncapInformeManualBdEdits>>
     );
@@ -1309,6 +1385,7 @@ export default function App() {
           incapacidades: incapRecords,
           formacion: formacionRecords,
           accidentalidad: accidentalidadRecords,
+          medicinaTrabajo: medicinaTrabajoRecords,
           incapInformeEdits: incapDemoInformeEdits,
           formacionInformeEdits: formacionDemoInformeEdits
         },
@@ -1323,6 +1400,7 @@ export default function App() {
     incapRecords,
     formacionRecords,
     accidentalidadRecords,
+    medicinaTrabajoRecords,
     incapDemoInformeEdits,
     formacionDemoInformeEdits,
     isDbTestConnected,
@@ -2038,6 +2116,73 @@ export default function App() {
         accidentalidadIndicators.iliMeta
       ),
     [accidentalidadIndicators.ili, accidentalidadIndicators.iliMeta]
+  );
+
+  const medicinaYearOptions = useMemo(
+    () => getMedicinaYearOptions(medicinaTrabajoRecords),
+    [medicinaTrabajoRecords]
+  );
+
+  const medicinaCityOptions = useMemo(
+    () => getMedicinaCityOptions(medicinaTrabajoRecords),
+    [medicinaTrabajoRecords]
+  );
+
+  const medicinaFilteredRecords = useMemo(
+    () =>
+      filterMedicinaRecords(medicinaTrabajoRecords, {
+        yearFilter: medicinaYearFilter,
+        startDate: sgiStartDate,
+        endDate: sgiEndDate,
+        cityFilter: medicinaCityFilter
+      }),
+    [medicinaTrabajoRecords, medicinaYearFilter, medicinaCityFilter, sgiStartDate, sgiEndDate]
+  );
+
+  const medicinaReferenceDate = useMemo(
+    () =>
+      resolveMedicinaReferenceDate({
+        yearFilter: medicinaYearFilter,
+        monthFilter: medicinaMonthFilter,
+        startDate: sgiStartDate,
+        endDate: sgiEndDate
+      }),
+    [medicinaYearFilter, medicinaMonthFilter, sgiStartDate, sgiEndDate]
+  );
+
+  const medicinaIndicators = useMemo(
+    () => buildMedicinaIndicators(medicinaFilteredRecords, medicinaReferenceDate),
+    [medicinaFilteredRecords, medicinaReferenceDate]
+  );
+
+  const medicinaTrendYear = useMemo(
+    () => resolveMedicinaTrendYear(medicinaYearFilter, medicinaFilteredRecords),
+    [medicinaYearFilter, medicinaFilteredRecords]
+  );
+
+  const medicinaMonthlyTrend = useMemo(
+    () => buildMedicinaMonthlyTrend(medicinaFilteredRecords, medicinaTrendYear),
+    [medicinaFilteredRecords, medicinaTrendYear]
+  );
+
+  const medicinaCityStats = useMemo(
+    () => groupMedicinaRecords(medicinaFilteredRecords, (row) => row.city || 'Sin ciudad'),
+    [medicinaFilteredRecords]
+  );
+
+  const medicinaLinkStats = useMemo(
+    () => groupMedicinaRecords(medicinaFilteredRecords, (row) => row.linkType || 'Sin vinculación'),
+    [medicinaFilteredRecords]
+  );
+
+  const medicinaIpsStats = useMemo(
+    () => groupMedicinaRecords(medicinaFilteredRecords, (row) => row.ips || 'Sin IPS'),
+    [medicinaFilteredRecords]
+  );
+
+  const medicinaContractStats = useMemo(
+    () => groupMedicinaRecords(medicinaFilteredRecords, (row) => row.contract || 'Sin contrato'),
+    [medicinaFilteredRecords]
   );
 
   const formacionClientStats = useMemo(() => {
@@ -2846,6 +2991,14 @@ export default function App() {
         { id: '4', label: 'Informe FT-GEI-SO-017' }
       ] as const;
     }
+    if (selectedServiceMenuItem === 'Medicina del trabajo') {
+      return [
+        { id: '1', label: 'Detalle general' },
+        { id: '2', label: 'Tendencia y vencimientos' },
+        { id: '3', label: 'Ciudad, contrato y vinculación' },
+        { id: '4', label: 'Control y seguimiento' }
+      ] as const;
+    }
     if (selectedServiceMenuItem === 'Comportamientos inseguros') {
       return [
         { id: '1', label: 'Detalle general' },
@@ -3028,6 +3181,43 @@ export default function App() {
       return;
     }
 
+    if (selectedServiceMenuItem === 'Medicina del trabajo') {
+      if (medicinaFilteredRecords.length === 0) {
+        alert('No hay registros de medicina del trabajo para exportar con el filtro actual.');
+        return;
+      }
+
+      const rows = medicinaFilteredRecords.map((row) => ({
+        DOCUMENTO: row.documento,
+        'NOMBRE COMPLETO': row.employeeName,
+        CIUDAD: row.city,
+        CARGO: row.role,
+        'F.INGRESO': row.entryDateLabel,
+        CONTRATO: row.contract,
+        VINCULACION: row.linkType,
+        'FECHA EXAMENES': row.examDateLabel,
+        'ESTADO EXAMEN': row.examStatus,
+        POSTINCAPACIDAD: row.postIncapacidad,
+        IPS: row.ips,
+        COSTOS: row.cost,
+        'TIEMPO PERIODICO AÑOS': row.periodicYears,
+        'FECHA DE VENCIMIENTO': row.expiryDateLabel
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      worksheet['!cols'] = [
+        { wch: 12 }, { wch: 34 }, { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 24 },
+        { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 12 },
+        { wch: 10 }, { wch: 16 }
+      ];
+      worksheet['!autofilter'] = { ref: 'A1:N1' };
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Tablero control');
+      XLSX.writeFile(workbook, `reporte_medicina_trabajo_${medicinaYearFilter || 'todos'}_${dateSuffix}.xlsx`);
+      return;
+    }
+
     if (sstFilteredVisits.length === 0) {
       alert('No hay registros para exportar con el filtro actual.');
       return;
@@ -3083,6 +3273,22 @@ export default function App() {
     };
   }, [sstVisits]);
 
+  const medicinaFilterOptions = useMemo(() => {
+    const uniqueSorted = (values: string[]) =>
+      Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, 'es')
+      );
+
+    return {
+      city: uniqueSorted(medicinaTrabajoRecords.map((row) => row.city)),
+      contract: uniqueSorted(medicinaTrabajoRecords.map((row) => row.contract)),
+      linkType: uniqueSorted(medicinaTrabajoRecords.map((row) => row.linkType)),
+      examStatus: uniqueSorted(medicinaTrabajoRecords.map((row) => row.examStatus)),
+      ips: uniqueSorted(medicinaTrabajoRecords.map((row) => row.ips)),
+      role: uniqueSorted(medicinaTrabajoRecords.map((row) => row.role))
+    };
+  }, [medicinaTrabajoRecords]);
+
   const handleServiceMenuItemClick = (item: (typeof serviceMenuItems)[number]) => {
     setSelectedServiceMenuItem(item);
     setActiveTab('sgi');
@@ -3101,6 +3307,12 @@ export default function App() {
     }
     if (item !== 'Accidentalidad') {
       setAccidentalidadYearFilter('');
+    }
+    if (item !== 'Medicina del trabajo') {
+      setMedicinaYearFilter('');
+      setMedicinaCityFilter('');
+      setMedicinaMonthFilter('');
+      setMedicinaAlertFilter('all');
     }
   };
 
@@ -3351,6 +3563,114 @@ export default function App() {
     }
 
     resetAccidentalidadForm();
+  };
+
+  const resetMedicinaForm = () => {
+    setMedicinaForm({
+      documento: '',
+      employeeName: '',
+      city: '',
+      role: '',
+      entryDate: '',
+      contract: '',
+      linkType: '',
+      examDate: '',
+      examStatus: '',
+      postIncapacidad: '',
+      ips: '',
+      cost: '',
+      periodicYears: '1',
+      expiryDate: ''
+    });
+    setEditingMedicinaId(null);
+  };
+
+  const handleRestoreMedicinaInitialData = () => {
+    const confirmed = window.confirm(
+      '¿Restaurar la base de datos al ejemplo inicial? Se eliminarán los registros agregados o editados en esta sesión.'
+    );
+    if (!confirmed) return;
+
+    setMedicinaTrabajoRecords(initialMedicinaTrabajoRecords.map((row) => ({ ...row })));
+    resetMedicinaForm();
+    setSgiStartDate('');
+    setSgiEndDate('');
+    setMedicinaYearFilter('');
+    setMedicinaCityFilter('');
+    setMedicinaMonthFilter('');
+    setMedicinaAlertFilter('all');
+  };
+
+  const handleEditMedicinaRecord = (row: MedicinaTrabajoRecord) => {
+    setEditingMedicinaId(row.id);
+    setMedicinaForm({
+      documento: row.documento,
+      employeeName: row.employeeName,
+      city: row.city,
+      role: row.role,
+      entryDate: row.entryDate,
+      contract: row.contract,
+      linkType: row.linkType,
+      examDate: row.examDate,
+      examStatus: row.examStatus,
+      postIncapacidad: row.postIncapacidad,
+      ips: row.ips,
+      cost: row.cost ? String(row.cost) : '',
+      periodicYears: String(row.periodicYears || 1),
+      expiryDate: row.expiryDate
+    });
+  };
+
+  const handleMedicinaFormSubmit = () => {
+    if (!medicinaForm.documento.trim() || !medicinaForm.employeeName.trim()) {
+      alert('Completa documento y nombre del trabajador para registrar.');
+      return;
+    }
+
+    const entryParsed = medicinaForm.entryDate ? new Date(`${medicinaForm.entryDate}T00:00:00`) : null;
+    const examParsed = medicinaForm.examDate ? new Date(`${medicinaForm.examDate}T00:00:00`) : null;
+    const expiryParsed = medicinaForm.expiryDate ? new Date(`${medicinaForm.expiryDate}T00:00:00`) : null;
+    const validExam = examParsed && !Number.isNaN(examParsed.getTime()) ? examParsed : null;
+    const validExpiry = expiryParsed && !Number.isNaN(expiryParsed.getTime()) ? expiryParsed : null;
+    const validEntry = entryParsed && !Number.isNaN(entryParsed.getTime()) ? entryParsed : null;
+    const nextId = editingMedicinaId ?? `med-${Date.now()}`;
+
+    const nextRecord: MedicinaTrabajoRecord = {
+      id: nextId,
+      documento: medicinaForm.documento.trim(),
+      employeeName: medicinaForm.employeeName.trim(),
+      city: medicinaForm.city.trim(),
+      role: medicinaForm.role.trim(),
+      entryDate: validEntry ? validEntry.toISOString().slice(0, 10) : medicinaForm.entryDate,
+      entryDateLabel: validEntry ? formatShortDate(validEntry) : medicinaForm.entryDate.trim(),
+      contract: medicinaForm.contract.trim(),
+      linkType: medicinaForm.linkType.trim(),
+      examDate: validExam ? validExam.toISOString().slice(0, 10) : medicinaForm.examDate,
+      examDateLabel: validExam ? formatShortDate(validExam) : medicinaForm.examDate.trim(),
+      examMonth: validExam ? validExam.getMonth() + 1 : 0,
+      examYear: validExam ? validExam.getFullYear() : 0,
+      examStatus: medicinaForm.examStatus.trim(),
+      postIncapacidad: medicinaForm.postIncapacidad.trim(),
+      ips: medicinaForm.ips.trim(),
+      cost: Number(medicinaForm.cost) || 0,
+      periodicYears: Number(medicinaForm.periodicYears) || 1,
+      expiryDate: validExpiry ? validExpiry.toISOString().slice(0, 10) : medicinaForm.expiryDate,
+      expiryDateLabel: validExpiry ? formatShortDate(validExpiry) : medicinaForm.expiryDate.trim(),
+      expiryMonth: validExpiry ? validExpiry.getMonth() + 1 : 0,
+      expiryYear: validExpiry ? validExpiry.getFullYear() : 0
+    };
+
+    if (editingMedicinaId) {
+      setMedicinaTrabajoRecords((prev) =>
+        prev.map((row) => (row.id === editingMedicinaId ? nextRecord : row))
+      );
+    } else {
+      setMedicinaTrabajoRecords((prev) => [nextRecord, ...prev]);
+    }
+
+    setSgiStartDate('');
+    setSgiEndDate('');
+    resetMedicinaForm();
   };
 
   const handleDemoExcelUpload = async (file: File) => {
@@ -3830,6 +4150,7 @@ export default function App() {
     setIncapRecords(initialIncapRecords.map((row) => ({ ...row })));
     setFormacionRecords(initialFormacionRecords.map((row) => ({ ...row })));
     setAccidentalidadRecords(initialAccidentalidadRecords.map((row) => ({ ...row })));
+    setMedicinaTrabajoRecords(initialMedicinaTrabajoRecords.map((row) => ({ ...row })));
     setIncapDemoInformeEdits({});
     setFormacionDemoInformeEdits({});
     setSgiStartDate('');
@@ -3838,6 +4159,9 @@ export default function App() {
     setIncapYearFilter('');
     setFormacionYearFilter('');
     setAccidentalidadYearFilter('');
+    setMedicinaYearFilter('');
+    setMedicinaCityFilter('');
+    setMedicinaMonthFilter('');
     setIncapDemoPanel('bd');
     setFormacionDemoPanel('bd');
     setAccidentalidadDemoPanel('bd');
@@ -3846,6 +4170,7 @@ export default function App() {
     resetIncapForm();
     resetFormacionForm();
     resetAccidentalidadForm();
+    resetMedicinaForm();
   };
 
   const handleFormacionFormSubmit = () => {
@@ -5338,7 +5663,7 @@ export default function App() {
             <div className="bg-white border border-[#eaecf0] rounded-soft p-4 shadow-sm space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && sgiCanEditDatasets && (
+                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Medicina del trabajo' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && sgiCanEditDatasets && (
                   selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación' || selectedServiceMenuItem === 'Accidentalidad' ? (
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -5419,7 +5744,7 @@ export default function App() {
                   </button>
                   )
                 )}
-                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && (
+                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Medicina del trabajo' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && (
                   <button
                     onClick={handleDownloadSgiReport}
                     className="px-3 py-2 rounded-soft text-xs font-semibold border border-[#006b3d] bg-[#006b3d] text-white hover:bg-[#00502c] transition-colors"
@@ -5429,7 +5754,7 @@ export default function App() {
                 )}
                 </div>
 
-                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && (
+                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Medicina del trabajo' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && (
                   <div className="flex flex-wrap items-center gap-2">
                     {selectedServiceMenuItem === 'Comportamientos inseguros' && (
                       <select
@@ -5466,6 +5791,42 @@ export default function App() {
                           <option key={`acc-year-${year}`} value={year}>{year}</option>
                         ))}
                       </select>
+                    )}
+                    {selectedServiceMenuItem === 'Medicina del trabajo' && (
+                      <>
+                        <select
+                          value={medicinaYearFilter}
+                          onChange={(e) => setMedicinaYearFilter(e.target.value)}
+                          className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                        >
+                          <option value="">Todos los años</option>
+                          {medicinaYearOptions.map((year) => (
+                            <option key={`med-year-${year}`} value={year}>{year}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={medicinaMonthFilter}
+                          onChange={(e) => setMedicinaMonthFilter(e.target.value)}
+                          className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                        >
+                          <option value="">Mes de referencia</option>
+                          {MEDICINA_MONTH_NAMES.map((name, index) => (
+                            <option key={`med-month-${index + 1}`} value={String(index + 1)}>
+                              {name.charAt(0).toUpperCase() + name.slice(1)}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={medicinaCityFilter}
+                          onChange={(e) => setMedicinaCityFilter(e.target.value)}
+                          className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white max-w-[160px]"
+                        >
+                          <option value="">Todas las ciudades</option>
+                          {medicinaCityOptions.map((city) => (
+                            <option key={`med-city-${city}`} value={city}>{city}</option>
+                          ))}
+                        </select>
+                      </>
                     )}
                     {selectedServiceMenuItem === 'Formación' && (
                       <select
@@ -6175,6 +6536,22 @@ export default function App() {
                     </div>
                   )}
                 </>
+              )}
+              {selectedServiceMenuItem === 'Medicina del trabajo' && (
+                <MedicinaTrabajoSection
+                  subIndicator={sgiSubIndicator}
+                  indicators={medicinaIndicators}
+                  referenceDate={medicinaReferenceDate}
+                  monthlyTrend={medicinaMonthlyTrend}
+                  trendYear={medicinaTrendYear}
+                  cityStats={medicinaCityStats}
+                  linkStats={medicinaLinkStats}
+                  ipsStats={medicinaIpsStats}
+                  contractStats={medicinaContractStats}
+                  filteredRecords={medicinaFilteredRecords}
+                  alertFilter={medicinaAlertFilter}
+                  onAlertFilterChange={setMedicinaAlertFilter}
+                />
               )}
               {selectedServiceMenuItem === 'Comportamientos inseguros' && (
                 <>
@@ -8186,6 +8563,130 @@ export default function App() {
                     </div>
                     {renderAccidentalidadInformeSections(accidentalidadInformeSections, 'acc-db-informe')}
                   </div>
+                </div>
+              )}
+
+              {selectedServiceMenuItem === 'Medicina del trabajo' && sgiCanEditDatasets && showDbDetailPanel && (
+                <div className="border border-[#eaecf0] rounded-soft overflow-hidden">
+                  <div className="bg-[#f8f9fa] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      Ingreso base de datos · Tablero control exámenes médicos
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleRestoreMedicinaInitialData}
+                        className="px-2 py-1 text-[11px] font-semibold rounded-soft border border-[#d6dce5] bg-white text-gray-700 hover:bg-gray-50"
+                      >
+                        Restaurar datos iniciales
+                      </button>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-white border-b border-[#eaecf0] text-left text-gray-600">
+                        <tr>
+                          <th className="px-2 py-2">Documento</th>
+                          <th className="px-2 py-2">Nombre</th>
+                          <th className="px-2 py-2">Ciudad</th>
+                          <th className="px-2 py-2">Cargo</th>
+                          <th className="px-2 py-2">Contrato</th>
+                          <th className="px-2 py-2">Vinculación</th>
+                          <th className="px-2 py-2">F. examen</th>
+                          <th className="px-2 py-2">Estado</th>
+                          <th className="px-2 py-2">Vencimiento</th>
+                          <th className="px-2 py-2">IPS</th>
+                          <th className="px-2 py-2">Costo</th>
+                          <th className="px-2 py-2">Período</th>
+                          <th className="px-2 py-2">Semáforo</th>
+                          <th className="px-2 py-2">Acciones</th>
+                        </tr>
+                        <tr className="border-t border-[#eef1f5] bg-[#f8f9fa]">
+                          <th className="px-2 py-2"><input value={medicinaForm.documento} onChange={(e) => setMedicinaForm((p) => ({ ...p, documento: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
+                          <th className="px-2 py-2"><input value={medicinaForm.employeeName} onChange={(e) => setMedicinaForm((p) => ({ ...p, employeeName: e.target.value }))} className="w-full min-w-[140px] border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
+                          <th className="px-2 py-2"><input list="med-city-options" value={medicinaForm.city} onChange={(e) => setMedicinaForm((p) => ({ ...p, city: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
+                          <th className="px-2 py-2"><input list="med-role-options" value={medicinaForm.role} onChange={(e) => setMedicinaForm((p) => ({ ...p, role: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
+                          <th className="px-2 py-2"><input list="med-contract-options" value={medicinaForm.contract} onChange={(e) => setMedicinaForm((p) => ({ ...p, contract: e.target.value }))} className="w-full min-w-[120px] border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
+                          <th className="px-2 py-2"><input list="med-link-options" value={medicinaForm.linkType} onChange={(e) => setMedicinaForm((p) => ({ ...p, linkType: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
+                          <th className="px-2 py-2"><input type="date" value={medicinaForm.examDate} onChange={(e) => setMedicinaForm((p) => ({ ...p, examDate: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
+                          <th className="px-2 py-2"><input list="med-status-options" value={medicinaForm.examStatus} onChange={(e) => setMedicinaForm((p) => ({ ...p, examStatus: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
+                          <th className="px-2 py-2"><input type="date" value={medicinaForm.expiryDate} onChange={(e) => setMedicinaForm((p) => ({ ...p, expiryDate: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
+                          <th className="px-2 py-2"><input list="med-ips-options" value={medicinaForm.ips} onChange={(e) => setMedicinaForm((p) => ({ ...p, ips: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
+                          <th className="px-2 py-2"><input value={medicinaForm.cost} onChange={(e) => setMedicinaForm((p) => ({ ...p, cost: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
+                          <th className="px-2 py-2">
+                            <select value={medicinaForm.periodicYears} onChange={(e) => setMedicinaForm((p) => ({ ...p, periodicYears: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1">
+                              <option value="1">1 año</option>
+                              <option value="3">3 años</option>
+                            </select>
+                          </th>
+                          <th className="px-2 py-2 text-[10px] text-gray-400">—</th>
+                          <th className="px-2 py-2">
+                            <div className="flex gap-1">
+                              <button type="button" onClick={handleMedicinaFormSubmit} className="px-2 py-1 rounded-soft border border-[#006b3d] bg-[#006b3d] text-white text-[10px] font-semibold">
+                                {editingMedicinaId ? 'Actualizar' : 'Registrar'}
+                              </button>
+                              <button type="button" onClick={resetMedicinaForm} className="px-2 py-1 rounded-soft border border-[#d6dce5] bg-white text-gray-700 text-[10px] font-semibold">
+                                Limpiar
+                              </button>
+                            </div>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#eef1f5]">
+                        {medicinaTrabajoRecords.slice(0, 120).map((row) => {
+                          const expiryStyles = getMedicinaExpiryStylesForRecord(row, medicinaReferenceDate);
+                          return (
+                            <tr key={row.id} className={expiryStyles.bg}>
+                              <td className="px-2 py-2 font-mono">{row.documento}</td>
+                              <td className="px-2 py-2">{row.employeeName}</td>
+                              <td className="px-2 py-2">{row.city}</td>
+                              <td className="px-2 py-2">{row.role}</td>
+                              <td className="px-2 py-2 max-w-[140px] truncate" title={row.contract}>{row.contract}</td>
+                              <td className="px-2 py-2">{row.linkType}</td>
+                              <td className="px-2 py-2">{row.examDateLabel}</td>
+                              <td className="px-2 py-2">{row.examStatus}</td>
+                              <td className="px-2 py-2">{row.expiryDateLabel}</td>
+                              <td className="px-2 py-2">{row.ips}</td>
+                              <td className="px-2 py-2 font-mono">{formatMedicinaCurrency(row.cost)}</td>
+                              <td className="px-2 py-2">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${expiryStyles.badge}`}>
+                                  {expiryStyles.label}
+                                </span>
+                              </td>
+                              <td className="px-2 py-2">
+                                <button type="button" onClick={() => handleEditMedicinaRecord(row)} className="px-2 py-1 rounded-soft border border-[#d6dce5] bg-white text-[10px] font-semibold">
+                                  Editar
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  {medicinaTrabajoRecords.length > 120 && (
+                    <p className="text-[11px] text-gray-500 px-3 py-2 border-t border-[#eaecf0]">
+                      Mostrando 120 de {medicinaTrabajoRecords.length} registros en la vista de edición.
+                    </p>
+                  )}
+                  <datalist id="med-city-options">
+                    {medicinaFilterOptions.city.map((option) => <option key={`med-city-${option}`} value={option} />)}
+                  </datalist>
+                  <datalist id="med-contract-options">
+                    {medicinaFilterOptions.contract.map((option) => <option key={`med-contract-${option}`} value={option} />)}
+                  </datalist>
+                  <datalist id="med-link-options">
+                    {medicinaFilterOptions.linkType.map((option) => <option key={`med-link-${option}`} value={option} />)}
+                  </datalist>
+                  <datalist id="med-status-options">
+                    {medicinaFilterOptions.examStatus.map((option) => <option key={`med-status-${option}`} value={option} />)}
+                  </datalist>
+                  <datalist id="med-ips-options">
+                    {medicinaFilterOptions.ips.map((option) => <option key={`med-ips-${option}`} value={option} />)}
+                  </datalist>
+                  <datalist id="med-role-options">
+                    {medicinaFilterOptions.role.map((option) => <option key={`med-role-${option}`} value={option} />)}
+                  </datalist>
                 </div>
               )}
             </div>

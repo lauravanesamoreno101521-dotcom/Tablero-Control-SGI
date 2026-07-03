@@ -114,12 +114,75 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_sgi_user();
 
+-- Perfil SGI al iniciar sesión (evita bloqueo si el trigger no corrió o RLS impidió el insert desde el cliente)
+create or replace function public.ensure_my_sgi_profile(p_full_name text default null)
+returns public.sgi_app_users
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+  user_email text;
+  existing public.sgi_app_users%rowtype;
+  result public.sgi_app_users%rowtype;
+begin
+  uid := auth.uid();
+  user_email := lower(trim(coalesce(auth.jwt() ->> 'email', '')));
+
+  if uid is null or user_email = '' then
+    return null;
+  end if;
+
+  select * into existing
+  from public.sgi_app_users u
+  where lower(u.email) = user_email;
+
+  if found then
+    if not existing.is_active then
+      return null;
+    end if;
+
+    update public.sgi_app_users u
+    set
+      last_login_at = now(),
+      auth_user_id = coalesce(u.auth_user_id, uid),
+      full_name = coalesce(
+        nullif(trim(u.full_name), ''),
+        nullif(trim(p_full_name), ''),
+        split_part(user_email, '@', 1)
+      )
+    where u.id = existing.id
+    returning * into result;
+
+    return result;
+  end if;
+
+  insert into public.sgi_app_users (auth_user_id, email, full_name, role, is_active, last_login_at)
+  values (
+    uid,
+    user_email,
+    coalesce(nullif(trim(p_full_name), ''), split_part(user_email, '@', 1)),
+    'viewer',
+    true,
+    now()
+  )
+  returning * into result;
+
+  return result;
+end;
+$$;
+
+revoke all on function public.ensure_my_sgi_profile(text) from public;
+grant execute on function public.ensure_my_sgi_profile(text) to authenticated;
+
 -- sgi_app_users policies
 drop policy if exists "sgi_users_select_own" on public.sgi_app_users;
 drop policy if exists "sgi_users_select_admin" on public.sgi_app_users;
 drop policy if exists "sgi_users_update_admin" on public.sgi_app_users;
 drop policy if exists "sgi_users_insert_admin" on public.sgi_app_users;
 drop policy if exists "sgi_users_insert_self_viewer" on public.sgi_app_users;
+drop policy if exists "sgi_users_update_own" on public.sgi_app_users;
 
 create policy "sgi_users_select_own"
   on public.sgi_app_users for select to authenticated
@@ -144,6 +207,11 @@ create policy "sgi_users_insert_self_viewer"
     lower(email) = public.current_sgi_email()
     and role = 'viewer'
   );
+
+create policy "sgi_users_update_own"
+  on public.sgi_app_users for update to authenticated
+  using (lower(email) = public.current_sgi_email())
+  with check (lower(email) = public.current_sgi_email());
 
 -- sgi_datasets policies
 drop policy if exists "anon_select_sgi_datasets" on public.sgi_datasets;
