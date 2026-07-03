@@ -82,11 +82,40 @@ import { DemoExcelUploadButton } from './DemoExcelUploadButton.tsx';
 import { importDemoExcelForService, type SgiDemoExcelService } from './sgiDemoExcelImport.ts';
 import { isSupabaseConfigured, SGI_SESSION_EMAIL_KEY } from './supabase/client.ts';
 import {
+  canEditSgiDatasets,
+  getCurrentSgiAppUser,
+  getSgiRoleLabel,
+  registerSgiUser,
+  signInSgiUser,
+  signOutSgiUser,
+  type SgiAppRole,
+  type SgiAppUser
+} from './supabase/auth.ts';
+import SgiAuthScreen from './components/SgiAuthScreen.tsx';
+import {
   loadSgiDatasetsFromSupabase,
   persistSgiDatasetsToSupabase,
-  registerUserEmail,
   type SgiPersistedDatasets
 } from './supabase/sgiPersistence.ts';
+import accidentalidadBdRaw from './accidentalidadBdData.json';
+import accidentalidadInformeRaw from './accidentalidadInformeData.json';
+import {
+  ACCIDENTALIDAD_INFORME_MONTH_LABELS,
+  buildAccidentalidadIliMetaComparison,
+  buildAccidentalidadIndicators,
+  buildAccidentalidadInformeSections,
+  buildAccidentalidadMonthlyTrend,
+  buildAccidentalidadReincidenceStats,
+  formatAccidentalidadInformeCell,
+  getAccidentalidadInformeRows,
+  groupAccidentalidadCauseStats,
+  groupAccidentalidadRecords,
+  resolveAccidentalidadIliStatus,
+  resolveAccidentalidadInformeYear,
+  type AccidentalidadIliStatus,
+  type AccidentalidadInformeSection,
+  type AccidentalidadRecord
+} from './accidentalidadInformeDemo.ts';
 
 type IncapInformeByYear = Record<string, unknown[][]>;
 
@@ -113,6 +142,13 @@ const getIncapInformeRows = (year: number): unknown[][] => {
 type FormacionInformeByYear = Record<string, unknown[][]>;
 
 const formacionInformeByYear = formacionInformeRaw as FormacionInformeByYear;
+
+const accidentalidadInformeByYear = accidentalidadInformeRaw as Record<string, unknown[][]>;
+
+const ACCIDENTALIDAD_INFORME_YEARS = Object.keys(accidentalidadInformeByYear)
+  .map(Number)
+  .filter((year) => year > 0)
+  .sort((a, b) => b - a);
 
 const FORMACION_INFORME_YEARS = Object.keys(formacionInformeByYear)
   .map(Number)
@@ -307,6 +343,28 @@ type FormacionForm = {
   trainingTime: string;
   modality: string;
   trainingHours: string;
+};
+
+type AccidentalidadForm = {
+  eventDate: string;
+  reportDate: string;
+  month: string;
+  year: string;
+  manager: string;
+  cedula: string;
+  employeeName: string;
+  plate: string;
+  client: string;
+  duringService: string;
+  characteristic: string;
+  severity: string;
+  lossLevel: string;
+  contractType: string;
+  linkType: string;
+  role: string;
+  basicCause: string;
+  immediateCause: string;
+  riskDescription: string;
 };
 
 const INCAP_DB_FIELD_CLASS = 'w-full min-w-0 max-w-full border border-[#d6dce5] rounded-soft px-1 py-1 bg-white text-[10px]';
@@ -563,6 +621,103 @@ const getGreenBarColor = (value: number, minValue: number, maxValue: number): st
 const getScaledBarHeight = (value: number, maxValue: number, minHeight = 6): number =>
   maxValue <= 0 ? minHeight : Math.max((value / maxValue) * 100, minHeight);
 
+const getAccidentalidadIliStatusStyles = (status: AccidentalidadIliStatus) => {
+  if (status === 'ok') {
+    return {
+      bg: 'bg-[#dcfce7]',
+      text: 'text-[#166534]',
+      border: 'border-[#86efac]',
+      label: 'Dentro de meta'
+    };
+  }
+  if (status === 'warn') {
+    return {
+      bg: 'bg-[#fef9c3]',
+      text: 'text-[#854d0e]',
+      border: 'border-[#fde047]',
+      label: 'Atención'
+    };
+  }
+  return {
+    bg: 'bg-[#fee2e2]',
+    text: 'text-[#991b1b]',
+    border: 'border-[#fca5a5]',
+    label: 'Fuera de meta'
+  };
+};
+
+const renderAccidentalidadStatList = (
+  title: string,
+  rows: { label: string; total: number; hint?: string }[],
+  emptyLabel = 'Sin registros en el filtro actual.'
+) => (
+  <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
+    <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">{title}</p>
+    {rows.length === 0 ? (
+      <p className="text-xs text-gray-500 bg-white border border-[#eaecf0] rounded-soft p-3">{emptyLabel}</p>
+    ) : (
+      <div className="space-y-2">
+        {rows.map((row) => (
+          <div key={`${title}-${row.label}`} className="bg-white border border-[#eaecf0] rounded-soft p-2.5 flex items-center justify-between gap-3 text-xs">
+            <span className="font-semibold text-[#191c1d] line-clamp-2" title={row.hint ?? row.label}>
+              {row.label}
+            </span>
+            <span className="font-mono shrink-0">{row.total}</span>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
+
+const renderAccidentalidadInformeSections = (sections: AccidentalidadInformeSection[], keyPrefix: string) => (
+  <div className="space-y-4">
+    {sections.map((section) => (
+      <div key={`${keyPrefix}-${section.id}`} className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
+        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">{section.title}</p>
+        <div className="overflow-x-auto bg-white border border-[#eaecf0] rounded-soft">
+          <table className="min-w-full text-xs">
+            <thead className="bg-[#f8f9fa] border-b border-[#eaecf0] text-left text-gray-600">
+              <tr>
+                <th className="px-3 py-2 min-w-[280px]">Descripción</th>
+                {ACCIDENTALIDAD_INFORME_MONTH_LABELS.map((month) => (
+                  <th key={`${keyPrefix}-${section.id}-${month}`} className="px-2 py-2 text-center">{month}</th>
+                ))}
+                <th className="px-2 py-2 text-center bg-[#eceff3]">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#eef1f5]">
+              {section.rows.map((row) => (
+                <tr key={`${keyPrefix}-${section.id}-${row.label}`}>
+                  <td className="px-3 py-2 font-medium text-[#191c1d]">{row.label}</td>
+                  {row.values.map((value, index) => (
+                    <td key={`${keyPrefix}-${section.id}-${row.label}-${index}`} className="px-2 py-2 text-center font-mono">
+                      {formatAccidentalidadInformeCell(row, value)}
+                    </td>
+                  ))}
+                  <td className="px-2 py-2 text-center font-mono bg-[#eceff3] font-semibold">
+                    {formatAccidentalidadInformeCell(row, row.total)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+const resolveSingleMonthIndexFromDateRange = (startDate: string, endDate: string): number | null => {
+  if (!startDate) return null;
+  const start = new Date(`${startDate}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return null;
+  const end = endDate ? new Date(`${endDate}T23:59:59`) : start;
+  if (Number.isNaN(end.getTime())) return null;
+  if (start.getFullYear() !== end.getFullYear() || start.getMonth() !== end.getMonth()) return null;
+  return start.getMonth();
+};
+
 const normalizeSgiTopicLabel = (topic: string): string => {
   if (/tamizaje/i.test(topic)) return 'Tamizajes';
   return topic;
@@ -577,6 +732,7 @@ const isEmpresturEmail = (email: string): boolean =>
 export default function App() {
   const serviceMenuItems = [
     'Acompañamiento presencial',
+    'Accidentalidad',
     'Comportamientos inseguros',
     'Incapacidades',
     'Formación'
@@ -618,13 +774,19 @@ export default function App() {
   const [unsafeYearFilter, setUnsafeYearFilter] = useState('');
   const [incapYearFilter, setIncapYearFilter] = useState('');
   const [formacionYearFilter, setFormacionYearFilter] = useState('');
+  const [accidentalidadYearFilter, setAccidentalidadYearFilter] = useState('');
   const sgiDonutRef = useRef<HTMLDivElement | null>(null);
   const supabaseSyncReadyRef = useRef(false);
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [authBootstrapping, setAuthBootstrapping] = useState(() => isSupabaseConfigured());
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [isRegisterSubmitting, setIsRegisterSubmitting] = useState(false);
   const [registerEmail, setRegisterEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [registerFullName, setRegisterFullName] = useState('');
   const [registerError, setRegisterError] = useState('');
   const [registeredUserEmail, setRegisteredUserEmail] = useState('');
+  const [sgiAppUserRole, setSgiAppUserRole] = useState<SgiAppRole | null>(null);
   const [isDbTestConnected, setIsDbTestConnected] = useState(false);
   const [showDbDetailPanel, setShowDbDetailPanel] = useState(false);
   const [isDemoExcelLoading, setIsDemoExcelLoading] = useState(false);
@@ -674,6 +836,7 @@ export default function App() {
     Record<number, Partial<IncapInformeMonthlyInputs & IncapInformeManualBdEdits>>
   >({});
   const [formacionDemoPanel, setFormacionDemoPanel] = useState<'bd' | 'informe'>('bd');
+  const [accidentalidadDemoPanel, setAccidentalidadDemoPanel] = useState<'bd' | 'informe'>('bd');
   const [formacionDemoInformeEdits, setFormacionDemoInformeEdits] = useState<
     Record<number, Partial<FormacionInformeMonthlyInputs>>
   >({});
@@ -689,6 +852,28 @@ export default function App() {
     trainingTime: '',
     modality: '',
     trainingHours: ''
+  });
+  const [editingAccidentalidadId, setEditingAccidentalidadId] = useState<string | null>(null);
+  const [accidentalidadForm, setAccidentalidadForm] = useState<AccidentalidadForm>({
+    eventDate: '',
+    reportDate: '',
+    month: '',
+    year: '',
+    manager: '',
+    cedula: '',
+    employeeName: '',
+    plate: '',
+    client: '',
+    duringService: '',
+    characteristic: '',
+    severity: '',
+    lossLevel: '',
+    contractType: '',
+    linkType: '',
+    role: '',
+    basicCause: '',
+    immediateCause: '',
+    riskDescription: ''
   });
   const [incapForm, setIncapForm] = useState<IncapForm>({
     incapDate: '',
@@ -990,11 +1175,28 @@ export default function App() {
 
   const [formacionRecords, setFormacionRecords] = useState<FormacionRecord[]>(() => initialFormacionRecords);
 
+  const initialAccidentalidadRecords = useMemo((): AccidentalidadRecord[] => {
+    return (Array.isArray(accidentalidadBdRaw) ? accidentalidadBdRaw : []).map((row) => {
+      const record = row as AccidentalidadRecord;
+      return {
+        ...record,
+        eventDate: record.eventDate ?? '',
+        month: record.month ?? 0,
+        year: record.year ?? 2026
+      };
+    });
+  }, []);
+
+  const [accidentalidadRecords, setAccidentalidadRecords] = useState<AccidentalidadRecord[]>(
+    () => initialAccidentalidadRecords
+  );
+
   const buildSgiDatasetBaselines = (): SgiPersistedDatasets => ({
     acompanamiento: initialSstVisits,
     comportamientos: initialUnsafeBehaviorRecords,
     incapacidades: initialIncapRecords,
     formacion: initialFormacionRecords,
+    accidentalidad: initialAccidentalidadRecords,
     incapInformeEdits: {},
     formacionInformeEdits: {}
   });
@@ -1004,6 +1206,7 @@ export default function App() {
     setUnsafeBehaviorRecords(datasets.comportamientos as UnsafeBehaviorRecord[]);
     setIncapRecords(datasets.incapacidades as IncapRecord[]);
     setFormacionRecords(datasets.formacion as FormacionRecord[]);
+    setAccidentalidadRecords(datasets.accidentalidad as AccidentalidadRecord[]);
     setIncapDemoInformeEdits(
       datasets.incapInformeEdits as Record<number, Partial<IncapInformeMonthlyInputs & IncapInformeManualBdEdits>>
     );
@@ -1012,50 +1215,89 @@ export default function App() {
     );
   };
 
-  const connectSgiSupabaseSession = async (
-    email: string
+  const establishSgiAuthenticatedSession = async (
+    appUser: SgiAppUser
   ): Promise<{ ok: true } | { ok: false; error: string }> => {
-    const normalizedEmail = email.trim().toLowerCase();
-
-    if (!isSupabaseConfigured()) {
-      setRegisteredUserEmail(normalizedEmail);
-      setIsDbTestConnected(true);
-      setShowDbDetailPanel(true);
-      supabaseSyncReadyRef.current = false;
-      return { ok: true };
-    }
-
-    const regResult = await registerUserEmail(normalizedEmail);
-    if (!regResult.ok) {
-      return { ok: false, error: regResult.error ?? 'No se pudo registrar el correo.' };
-    }
-
     supabaseSyncReadyRef.current = false;
-    const datasets = await loadSgiDatasetsFromSupabase(buildSgiDatasetBaselines());
+    const datasets = await loadSgiDatasetsFromSupabase(buildSgiDatasetBaselines(), appUser.email);
     applySgiDatasetsFromSupabase(datasets);
-    localStorage.setItem(SGI_SESSION_EMAIL_KEY, normalizedEmail);
-    setRegisteredUserEmail(normalizedEmail);
+    setRegisteredUserEmail(appUser.email);
+    setSgiAppUserRole(appUser.role);
     setIsDbTestConnected(true);
-    setShowDbDetailPanel(true);
+    setShowDbDetailPanel(canEditSgiDatasets(appUser.role));
     supabaseSyncReadyRef.current = true;
     return { ok: true };
   };
 
-  useEffect(() => {
-    if (!isSupabaseConfigured()) return;
-    const savedEmail = localStorage.getItem(SGI_SESSION_EMAIL_KEY);
-    if (!savedEmail || !isEmpresturEmail(savedEmail)) return;
+  const connectSgiSupabaseSession = async (
+    email: string,
+    password: string
+  ): Promise<{ ok: true } | { ok: false; error: string }> => {
+    const normalizedEmail = email.trim().toLowerCase();
 
-    void connectSgiSupabaseSession(savedEmail).catch((error) => {
-      console.error('Error restaurando sesión SGI:', error);
-      localStorage.removeItem(SGI_SESSION_EMAIL_KEY);
-    });
+    if (!isSupabaseConfigured()) {
+      if (!isEmpresturEmail(normalizedEmail)) {
+        return { ok: false, error: 'error en registro de correo electronico' };
+      }
+      setRegisteredUserEmail(normalizedEmail);
+      setSgiAppUserRole('viewer');
+      setIsDbTestConnected(true);
+      setShowDbDetailPanel(false);
+      supabaseSyncReadyRef.current = false;
+      return { ok: true };
+    }
+
+    const signInResult = await signInSgiUser(normalizedEmail, password);
+    if (!signInResult.ok) {
+      return { ok: false, error: 'error' in signInResult ? signInResult.error : 'No se pudo iniciar sesión.' };
+    }
+
+    try {
+      return await establishSgiAuthenticatedSession(signInResult.user);
+    } catch (error) {
+      await signOutSgiUser();
+      const message = error instanceof Error ? error.message : 'No se pudieron cargar los datos SGI.';
+      return { ok: false, error: message };
+    }
+  };
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setAuthBootstrapping(false);
+      return;
+    }
+
+    const restoreAuthSession = async () => {
+      try {
+        const appUser = await getCurrentSgiAppUser();
+        if (!appUser) {
+          localStorage.removeItem(SGI_SESSION_EMAIL_KEY);
+          return;
+        }
+        await establishSgiAuthenticatedSession(appUser);
+      } catch (error) {
+        console.error('Error restaurando sesión SGI:', error);
+        localStorage.removeItem(SGI_SESSION_EMAIL_KEY);
+        await signOutSgiUser();
+      } finally {
+        setAuthBootstrapping(false);
+      }
+    };
+
+    void restoreAuthSession();
     // Restaurar sesión guardada al iniciar la aplicación.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!isSupabaseConfigured() || !isDbTestConnected || !registeredUserEmail || !supabaseSyncReadyRef.current) {
+    if (
+      !isSupabaseConfigured() ||
+      !isDbTestConnected ||
+      !registeredUserEmail ||
+      !supabaseSyncReadyRef.current ||
+      !sgiAppUserRole ||
+      !canEditSgiDatasets(sgiAppUserRole)
+    ) {
       return;
     }
 
@@ -1066,6 +1308,7 @@ export default function App() {
           comportamientos: unsafeBehaviorRecords,
           incapacidades: incapRecords,
           formacion: formacionRecords,
+          accidentalidad: accidentalidadRecords,
           incapInformeEdits: incapDemoInformeEdits,
           formacionInformeEdits: formacionDemoInformeEdits
         },
@@ -1079,11 +1322,19 @@ export default function App() {
     unsafeBehaviorRecords,
     incapRecords,
     formacionRecords,
+    accidentalidadRecords,
     incapDemoInformeEdits,
     formacionDemoInformeEdits,
     isDbTestConnected,
-    registeredUserEmail
+    registeredUserEmail,
+    sgiAppUserRole
   ]);
+
+  const sgiCanEditDatasets = useMemo(() => {
+    if (!isDbTestConnected) return false;
+    if (!isSupabaseConfigured()) return true;
+    return sgiAppUserRole ? canEditSgiDatasets(sgiAppUserRole) : false;
+  }, [isDbTestConnected, sgiAppUserRole]);
 
   const unsafeFilteredRecords = useMemo(() => {
     const selectedYear = Number(unsafeYearFilter);
@@ -1588,6 +1839,44 @@ export default function App() {
     formacionHasIncapEmployeesSource
   ]);
 
+  const formacionProgrammedActivitiesMonthly = useMemo((): number[] => {
+    if (formacionDemoInformeInputs) {
+      return formacionDemoInformeInputs.programmedActivities;
+    }
+    const rows = formacionInformeYear ? getFormacionInformeRows(formacionInformeYear) : [];
+    return FORMACION_INFORME_MONTH_LABELS.map((_, index) => {
+      const row = rows[index + 1] as unknown[] | undefined;
+      return Array.isArray(row) ? toNumberOrZero(row[1]) : 0;
+    });
+  }, [formacionDemoInformeInputs, formacionInformeYear]);
+
+  const formacionSelectedMonthIndex = useMemo(
+    () => resolveSingleMonthIndexFromDateRange(sgiStartDate, sgiEndDate),
+    [sgiStartDate, sgiEndDate]
+  );
+
+  const formacionKpiProgrammedActivities = useMemo(() => {
+    if (formacionSelectedMonthIndex === null) {
+      return formacionIndicatorsFromInforme.programmedActivities;
+    }
+    return formacionProgrammedActivitiesMonthly[formacionSelectedMonthIndex] ?? 0;
+  }, [
+    formacionSelectedMonthIndex,
+    formacionIndicatorsFromInforme.programmedActivities,
+    formacionProgrammedActivitiesMonthly
+  ]);
+
+  const formacionKpiActiveStaff = useMemo(() => {
+    if (formacionSelectedMonthIndex === null) {
+      return formacionIndicatorsFromInforme.activeStaff;
+    }
+    return formacionActiveStaffFromIncap[formacionSelectedMonthIndex] ?? 0;
+  }, [
+    formacionSelectedMonthIndex,
+    formacionIndicatorsFromInforme.activeStaff,
+    formacionActiveStaffFromIncap
+  ]);
+
   const formacionMonthlyStats = useMemo(() => {
     const monthly = Array.from({ length: 12 }, (_, index) => ({
       month: index + 1,
@@ -1636,6 +1925,120 @@ export default function App() {
       };
     });
   }, [formacionFilteredRecords, formacionActiveStaffFromIncap]);
+
+  const accidentalidadYearOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...accidentalidadRecords.map((row) => row.year).filter((year) => year > 0),
+          ...ACCIDENTALIDAD_INFORME_YEARS
+        ])
+      ).sort((a, b) => Number(b) - Number(a)),
+    [accidentalidadRecords]
+  );
+
+  const accidentalidadInformeYear = useMemo(
+    () => resolveAccidentalidadInformeYear(accidentalidadYearFilter, ACCIDENTALIDAD_INFORME_YEARS),
+    [accidentalidadYearFilter]
+  );
+
+  const accidentalidadSelectedMonthIndex = useMemo(
+    () => resolveSingleMonthIndexFromDateRange(sgiStartDate, sgiEndDate),
+    [sgiStartDate, sgiEndDate]
+  );
+
+  const accidentalidadFilteredRecords = useMemo(() => {
+    const start = sgiStartDate ? new Date(`${sgiStartDate}T00:00:00`) : null;
+    const end = sgiEndDate ? new Date(`${sgiEndDate}T23:59:59`) : null;
+    const selectedYear = Number(accidentalidadYearFilter);
+
+    return accidentalidadRecords.filter((row) => {
+      if (accidentalidadYearFilter && row.year !== selectedYear) return false;
+      if (!row.eventDate) return !start && !end;
+      const eventDate = new Date(`${row.eventDate}T00:00:00`);
+      if (Number.isNaN(eventDate.getTime())) return !start && !end;
+      if (start && eventDate < start) return false;
+      if (end && eventDate > end) return false;
+      return true;
+    });
+  }, [accidentalidadRecords, accidentalidadYearFilter, sgiStartDate, sgiEndDate]);
+
+  const accidentalidadIndicators = useMemo(() => {
+    const year = accidentalidadInformeYear ?? ACCIDENTALIDAD_INFORME_YEARS[0] ?? 2026;
+    const rows = getAccidentalidadInformeRows(accidentalidadInformeByYear, year);
+    return buildAccidentalidadIndicators(rows, accidentalidadFilteredRecords, year, accidentalidadSelectedMonthIndex);
+  }, [
+    accidentalidadInformeYear,
+    accidentalidadFilteredRecords,
+    accidentalidadSelectedMonthIndex
+  ]);
+
+  const accidentalidadMonthlyTrend = useMemo(() => {
+    const year = accidentalidadInformeYear ?? ACCIDENTALIDAD_INFORME_YEARS[0] ?? 2026;
+    const rows = getAccidentalidadInformeRows(accidentalidadInformeByYear, year);
+    return buildAccidentalidadMonthlyTrend(rows, accidentalidadFilteredRecords, year);
+  }, [accidentalidadInformeYear, accidentalidadFilteredRecords]);
+
+  const accidentalidadCharacteristicStats = useMemo(
+    () => groupAccidentalidadRecords(accidentalidadFilteredRecords, (row) => row.characteristic || 'Sin característica'),
+    [accidentalidadFilteredRecords]
+  );
+
+  const accidentalidadClientStats = useMemo(
+    () => groupAccidentalidadRecords(accidentalidadFilteredRecords, (row) => row.client || 'Sin cliente'),
+    [accidentalidadFilteredRecords]
+  );
+
+  const accidentalidadSeverityStats = useMemo(
+    () => groupAccidentalidadRecords(accidentalidadFilteredRecords, (row) => row.severity || 'Sin clasificar'),
+    [accidentalidadFilteredRecords]
+  );
+
+  const accidentalidadLinkTypeStats = useMemo(
+    () => groupAccidentalidadRecords(accidentalidadFilteredRecords, (row) => row.linkType || 'Sin vinculación'),
+    [accidentalidadFilteredRecords]
+  );
+
+  const accidentalidadContractTypeStats = useMemo(
+    () => groupAccidentalidadRecords(accidentalidadFilteredRecords, (row) => row.contractType || 'Sin contratación'),
+    [accidentalidadFilteredRecords]
+  );
+
+  const accidentalidadBasicCauseStats = useMemo(
+    () => groupAccidentalidadCauseStats(accidentalidadFilteredRecords, 'basicCause'),
+    [accidentalidadFilteredRecords]
+  );
+
+  const accidentalidadImmediateCauseStats = useMemo(
+    () => groupAccidentalidadCauseStats(accidentalidadFilteredRecords, 'immediateCause'),
+    [accidentalidadFilteredRecords]
+  );
+
+  const accidentalidadReincidenceStats = useMemo(
+    () => buildAccidentalidadReincidenceStats(accidentalidadFilteredRecords),
+    [accidentalidadFilteredRecords]
+  );
+
+  const accidentalidadInformeSections = useMemo(() => {
+    const year = accidentalidadInformeYear ?? ACCIDENTALIDAD_INFORME_YEARS[0] ?? 2026;
+    const rows = getAccidentalidadInformeRows(accidentalidadInformeByYear, year);
+    return buildAccidentalidadInformeSections(rows);
+  }, [accidentalidadInformeYear]);
+
+  const accidentalidadIliMetaComparison = useMemo(() => {
+    const year = accidentalidadInformeYear ?? ACCIDENTALIDAD_INFORME_YEARS[0] ?? 2026;
+    const rows = getAccidentalidadInformeRows(accidentalidadInformeByYear, year);
+    return buildAccidentalidadIliMetaComparison(rows);
+  }, [accidentalidadInformeYear]);
+
+  const accidentalidadCurrentIliStatus = useMemo(
+    () =>
+      resolveAccidentalidadIliStatus(
+        accidentalidadIndicators.ili,
+        accidentalidadIndicators.iliMeta
+      ),
+    [accidentalidadIndicators.ili, accidentalidadIndicators.iliMeta]
+  );
 
   const formacionClientStats = useMemo(() => {
     const grouped = new Map<string, { participants: Set<string>; sessions: Set<string>; hhf: number; approved: number }>();
@@ -2435,6 +2838,14 @@ export default function App() {
         { id: '3', label: 'Impacto mensual del personal' }
       ] as const;
     }
+    if (selectedServiceMenuItem === 'Accidentalidad') {
+      return [
+        { id: '1', label: 'Detalle general' },
+        { id: '2', label: 'Tendencia mensual' },
+        { id: '3', label: 'Tipo, cliente y gravedad' },
+        { id: '4', label: 'Informe FT-GEI-SO-017' }
+      ] as const;
+    }
     if (selectedServiceMenuItem === 'Comportamientos inseguros') {
       return [
         { id: '1', label: 'Detalle general' },
@@ -2584,6 +2995,39 @@ export default function App() {
       return;
     }
 
+    if (selectedServiceMenuItem === 'Accidentalidad') {
+      if (accidentalidadFilteredRecords.length === 0) {
+        alert('No hay registros de accidentalidad para exportar con el filtro actual.');
+        return;
+      }
+
+      const rows = accidentalidadFilteredRecords.map((row) => ({
+        'FECHA REPORTE': row.reportDateLabel,
+        'FECHA EVENTO': row.eventDateLabel,
+        CEDULA: row.cedula,
+        EMPLEADO: row.employeeName,
+        CLIENTE: row.client,
+        CARACTERISTICA: row.characteristic,
+        GRAVEDAD: row.severity,
+        'DURANTE SERVICIO': row.duringService,
+        'TIPO CONTRATACION': row.contractType,
+        'CAUSA BASICA': row.basicCause,
+        'DESCRIPCION RIESGO': row.riskDescription
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      worksheet['!cols'] = [
+        { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 34 }, { wch: 22 }, { wch: 10 },
+        { wch: 12 }, { wch: 14 }, { wch: 18 }, { wch: 28 }, { wch: 34 }
+      ];
+      worksheet['!autofilter'] = { ref: 'A1:K1' };
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'bd_AT_SV_IT_2026');
+      XLSX.writeFile(workbook, `reporte_accidentalidad_${accidentalidadYearFilter || 'todos'}_${dateSuffix}.xlsx`);
+      return;
+    }
+
     if (sstFilteredVisits.length === 0) {
       alert('No hay registros para exportar con el filtro actual.');
       return;
@@ -2655,9 +3099,12 @@ export default function App() {
     if (item !== 'Formación') {
       setFormacionYearFilter('');
     }
+    if (item !== 'Accidentalidad') {
+      setAccidentalidadYearFilter('');
+    }
   };
 
-  const handleRegisterSubmit = async () => {
+  const handleAuthSubmit = async () => {
     const email = registerEmail.trim();
     if (!email) {
       setRegisterError('Ingresa tu correo corporativo.');
@@ -2668,19 +3115,62 @@ export default function App() {
       return;
     }
 
+    if (authMode === 'register') {
+      if (isSupabaseConfigured()) {
+        if (!loginPassword.trim()) {
+          setRegisterError('Ingresa una contraseña.');
+          return;
+        }
+        if (loginPassword !== confirmPassword) {
+          setRegisterError('Las contraseñas no coinciden.');
+          return;
+        }
+      }
+    } else if (isSupabaseConfigured() && !loginPassword.trim()) {
+      setRegisterError('Ingresa tu contraseña.');
+      return;
+    }
+
     setRegisterError('');
     setIsRegisterSubmitting(true);
     try {
-      const result = await connectSgiSupabaseSession(email);
-      if (!result.ok) {
-        setRegisterError('error' in result ? result.error : 'No se pudo registrar el correo.');
-        return;
+      if (authMode === 'register') {
+        if (!isSupabaseConfigured()) {
+          const result = await connectSgiSupabaseSession(email, '');
+          if (!result.ok) {
+            setRegisterError('error' in result ? result.error : 'No se pudo registrar.');
+            return;
+          }
+        } else {
+          const registerResult = await registerSgiUser(email, loginPassword, registerFullName);
+          if (!registerResult.ok) {
+            setRegisterError('error' in registerResult ? registerResult.error : 'No se pudo registrar.');
+            return;
+          }
+          try {
+            await establishSgiAuthenticatedSession(registerResult.user);
+          } catch (error) {
+            await signOutSgiUser();
+            const message = error instanceof Error ? error.message : 'No se pudieron cargar los datos SGI.';
+            setRegisterError(message);
+            return;
+          }
+        }
+      } else {
+        const result = await connectSgiSupabaseSession(email, loginPassword);
+        if (!result.ok) {
+          setRegisterError('error' in result ? result.error : 'No se pudo iniciar sesión.');
+          return;
+        }
       }
-      setShowRegisterModal(false);
+
       setRegisterEmail('');
+      setLoginPassword('');
+      setConfirmPassword('');
+      setRegisterFullName('');
     } catch (error) {
-      console.error('Error en registro SGI:', error);
-      setRegisterError('No se pudo completar el registro. Verifica la conexión con Supabase.');
+      console.error('Error en autenticación SGI:', error);
+      setRegisterError('No se pudo completar la operación. Verifica la conexión con Supabase.');
     } finally {
       setIsRegisterSubmitting(false);
     }
@@ -2691,8 +3181,8 @@ export default function App() {
     try {
       await new Promise((resolve) => setTimeout(resolve, 700));
       setIsDbTestConnected(true);
-      setShowDbDetailPanel(true);
-      setShowRegisterModal(false);
+      setSgiAppUserRole('viewer');
+      setShowDbDetailPanel(false);
     } finally {
       setIsRegisterSubmitting(false);
     }
@@ -2742,6 +3232,125 @@ export default function App() {
     setSgiStartDate('');
     setSgiEndDate('');
     setFormacionYearFilter('');
+  };
+
+  const resetAccidentalidadForm = () => {
+    setAccidentalidadForm({
+      eventDate: '',
+      reportDate: '',
+      month: '',
+      year: '',
+      manager: '',
+      cedula: '',
+      employeeName: '',
+      plate: '',
+      client: '',
+      duringService: '',
+      characteristic: '',
+      severity: '',
+      lossLevel: '',
+      contractType: '',
+      linkType: '',
+      role: '',
+      basicCause: '',
+      immediateCause: '',
+      riskDescription: ''
+    });
+    setEditingAccidentalidadId(null);
+  };
+
+  const handleRestoreAccidentalidadInitialData = () => {
+    const confirmed = window.confirm(
+      '¿Restaurar la base de datos al ejemplo inicial? Se eliminarán los registros agregados o editados en esta sesión.'
+    );
+    if (!confirmed) return;
+
+    setAccidentalidadRecords(initialAccidentalidadRecords.map((row) => ({ ...row })));
+    resetAccidentalidadForm();
+    setSgiStartDate('');
+    setSgiEndDate('');
+    setAccidentalidadYearFilter('');
+  };
+
+  const handleEditAccidentalidadRecord = (row: AccidentalidadRecord) => {
+    setEditingAccidentalidadId(row.id);
+    setAccidentalidadForm({
+      eventDate: row.eventDate,
+      reportDate: row.reportDate,
+      month: row.month ? String(row.month) : '',
+      year: row.year ? String(row.year) : '',
+      manager: row.manager,
+      cedula: row.cedula,
+      employeeName: row.employeeName,
+      plate: row.plate,
+      client: row.client,
+      duringService: row.duringService,
+      characteristic: row.characteristic,
+      severity: row.severity,
+      lossLevel: row.lossLevel,
+      contractType: row.contractType,
+      linkType: row.linkType,
+      role: row.role,
+      basicCause: row.basicCause,
+      immediateCause: row.immediateCause,
+      riskDescription: row.riskDescription
+    });
+  };
+
+  const handleAccidentalidadFormSubmit = () => {
+    if (!accidentalidadForm.eventDate || !accidentalidadForm.cedula.trim() || !accidentalidadForm.employeeName.trim()) {
+      alert('Completa fecha del evento, cédula y nombre del empleado para registrar.');
+      return;
+    }
+
+    const eventDate = new Date(`${accidentalidadForm.eventDate}T00:00:00`);
+    if (Number.isNaN(eventDate.getTime())) {
+      alert('La fecha del evento no es válida.');
+      return;
+    }
+
+    const reportDate = accidentalidadForm.reportDate
+      ? new Date(`${accidentalidadForm.reportDate}T00:00:00`)
+      : null;
+    const validReportDate = reportDate && !Number.isNaN(reportDate.getTime()) ? reportDate : null;
+    const month = Number(accidentalidadForm.month) || eventDate.getMonth() + 1;
+    const year = Number(accidentalidadForm.year) || eventDate.getFullYear();
+    const nextId = editingAccidentalidadId ?? `acc-${Date.now()}`;
+
+    const nextRecord: AccidentalidadRecord = {
+      id: nextId,
+      reportDate: validReportDate ? validReportDate.toISOString().slice(0, 10) : accidentalidadForm.reportDate,
+      reportDateLabel: validReportDate ? formatShortDate(validReportDate) : accidentalidadForm.reportDate.trim(),
+      eventDate: eventDate.toISOString().slice(0, 10),
+      eventDateLabel: formatShortDate(eventDate),
+      month,
+      year,
+      manager: accidentalidadForm.manager.trim(),
+      cedula: accidentalidadForm.cedula.trim(),
+      employeeName: accidentalidadForm.employeeName.trim(),
+      plate: accidentalidadForm.plate.trim(),
+      client: accidentalidadForm.client.trim(),
+      duringService: accidentalidadForm.duringService.trim(),
+      characteristic: accidentalidadForm.characteristic.trim(),
+      severity: accidentalidadForm.severity.trim(),
+      lossLevel: accidentalidadForm.lossLevel.trim(),
+      contractType: accidentalidadForm.contractType.trim(),
+      linkType: accidentalidadForm.linkType.trim(),
+      role: accidentalidadForm.role.trim(),
+      basicCause: accidentalidadForm.basicCause.trim(),
+      immediateCause: accidentalidadForm.immediateCause.trim(),
+      riskDescription: accidentalidadForm.riskDescription.trim()
+    };
+
+    if (editingAccidentalidadId) {
+      setAccidentalidadRecords((prev) =>
+        prev.map((row) => (row.id === editingAccidentalidadId ? nextRecord : row))
+      );
+    } else {
+      setAccidentalidadRecords((prev) => [nextRecord, ...prev]);
+    }
+
+    resetAccidentalidadForm();
   };
 
   const handleDemoExcelUpload = async (file: File) => {
@@ -3220,6 +3829,7 @@ export default function App() {
     setUnsafeBehaviorRecords(initialUnsafeBehaviorRecords.map((row) => ({ ...row })));
     setIncapRecords(initialIncapRecords.map((row) => ({ ...row })));
     setFormacionRecords(initialFormacionRecords.map((row) => ({ ...row })));
+    setAccidentalidadRecords(initialAccidentalidadRecords.map((row) => ({ ...row })));
     setIncapDemoInformeEdits({});
     setFormacionDemoInformeEdits({});
     setSgiStartDate('');
@@ -3227,12 +3837,15 @@ export default function App() {
     setUnsafeYearFilter('');
     setIncapYearFilter('');
     setFormacionYearFilter('');
+    setAccidentalidadYearFilter('');
     setIncapDemoPanel('bd');
     setFormacionDemoPanel('bd');
+    setAccidentalidadDemoPanel('bd');
     resetDbForm();
     resetUnsafeForm();
     resetIncapForm();
     resetFormacionForm();
+    resetAccidentalidadForm();
   };
 
   const handleFormacionFormSubmit = () => {
@@ -3349,6 +3962,38 @@ export default function App() {
     });
   };
 
+  if (authBootstrapping) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center">
+        <p className="text-sm text-gray-600 font-medium">Verificando sesión...</p>
+      </div>
+    );
+  }
+
+  if (!isDbTestConnected) {
+    return (
+      <SgiAuthScreen
+        mode={authMode}
+        onModeChange={(mode) => {
+          setAuthMode(mode);
+          setRegisterError('');
+        }}
+        email={registerEmail}
+        password={loginPassword}
+        confirmPassword={confirmPassword}
+        fullName={registerFullName}
+        onEmailChange={setRegisterEmail}
+        onPasswordChange={setLoginPassword}
+        onConfirmPasswordChange={setConfirmPassword}
+        onFullNameChange={setRegisterFullName}
+        error={registerError}
+        isSubmitting={isRegisterSubmitting}
+        usesSupabaseAuth={isSupabaseConfigured()}
+        onSubmit={() => void handleAuthSubmit()}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f8f9fa] flex flex-col font-sans selection:bg-[#ffd000] selection:text-black antialiased">
       
@@ -3385,29 +4030,28 @@ export default function App() {
             <button
               type="button"
               onClick={() => {
-                if (isDbTestConnected) {
-                  restoreAllSgiDemoBaseline();
-                  setIsDbTestConnected(false);
-                  setShowDbDetailPanel(false);
-                  setShowRegisterModal(false);
-                  setRegisteredUserEmail('');
-                  setRegisterEmail('');
-                  setRegisterError('');
-                  localStorage.removeItem(SGI_SESSION_EMAIL_KEY);
-                  supabaseSyncReadyRef.current = false;
-                  return;
-                }
-                setRegisterError('');
+                restoreAllSgiDemoBaseline();
+                setIsDbTestConnected(false);
+                setShowDbDetailPanel(false);
+                setRegisteredUserEmail('');
+                setSgiAppUserRole(null);
                 setRegisterEmail('');
-                setShowRegisterModal(true);
+                setLoginPassword('');
+                setConfirmPassword('');
+                setRegisterFullName('');
+                setRegisterError('');
+                setAuthMode('login');
+                localStorage.removeItem(SGI_SESSION_EMAIL_KEY);
+                supabaseSyncReadyRef.current = false;
+                void signOutSgiUser();
               }}
               className="bg-[#ffd000] text-[#00502c] hover:bg-[#f5c400] px-3.5 py-1.5 rounded-soft border border-[#ffe786] text-[11px] font-bold uppercase tracking-wider transition-colors"
             >
-              {isDbTestConnected ? 'Cerrar sesión' : 'Registrarse'}
+              Cerrar sesión
             </button>
-            {isDbTestConnected && registeredUserEmail && (
+            {registeredUserEmail && sgiAppUserRole && (
               <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-soft border border-emerald-300 text-[10px] font-bold uppercase tracking-wider">
-                {registeredUserEmail}
+                {registeredUserEmail} · {getSgiRoleLabel(sgiAppUserRole)}
               </span>
             )}
           </div>
@@ -4694,23 +5338,33 @@ export default function App() {
             <div className="bg-white border border-[#eaecf0] rounded-soft p-4 shadow-sm space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && isDbTestConnected && (
-                  selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación' ? (
+                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && sgiCanEditDatasets && (
+                  selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación' || selectedServiceMenuItem === 'Accidentalidad' ? (
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() => {
-                          const activePanel = selectedServiceMenuItem === 'Formación' ? formacionDemoPanel : incapDemoPanel;
+                          const activePanel =
+                            selectedServiceMenuItem === 'Formación'
+                              ? formacionDemoPanel
+                              : selectedServiceMenuItem === 'Accidentalidad'
+                                ? accidentalidadDemoPanel
+                                : incapDemoPanel;
                           if (showDbDetailPanel && activePanel === 'bd') {
                             setShowDbDetailPanel(false);
                             return;
                           }
                           setShowDbDetailPanel(true);
                           if (selectedServiceMenuItem === 'Formación') setFormacionDemoPanel('bd');
+                          else if (selectedServiceMenuItem === 'Accidentalidad') setAccidentalidadDemoPanel('bd');
                           else setIncapDemoPanel('bd');
                         }}
                         className={`px-3 py-2 rounded-soft text-xs font-semibold border transition-colors ${
                           showDbDetailPanel &&
-                          (selectedServiceMenuItem === 'Formación' ? formacionDemoPanel : incapDemoPanel) === 'bd'
+                          (selectedServiceMenuItem === 'Formación'
+                            ? formacionDemoPanel
+                            : selectedServiceMenuItem === 'Accidentalidad'
+                              ? accidentalidadDemoPanel
+                              : incapDemoPanel) === 'bd'
                             ? 'border-[#00502c] bg-[#00502c] text-white'
                             : 'border-[#d6dce5] bg-white text-gray-700 hover:bg-gray-50'
                         }`}
@@ -4719,25 +5373,37 @@ export default function App() {
                       </button>
                       <button
                         onClick={() => {
-                          const activePanel = selectedServiceMenuItem === 'Formación' ? formacionDemoPanel : incapDemoPanel;
+                          const activePanel =
+                            selectedServiceMenuItem === 'Formación'
+                              ? formacionDemoPanel
+                              : selectedServiceMenuItem === 'Accidentalidad'
+                                ? accidentalidadDemoPanel
+                                : incapDemoPanel;
                           if (showDbDetailPanel && activePanel === 'informe') {
                             setShowDbDetailPanel(false);
                             return;
                           }
                           setShowDbDetailPanel(true);
                           if (selectedServiceMenuItem === 'Formación') setFormacionDemoPanel('informe');
+                          else if (selectedServiceMenuItem === 'Accidentalidad') setAccidentalidadDemoPanel('informe');
                           else setIncapDemoPanel('informe');
                         }}
                         className={`px-3 py-2 rounded-soft text-xs font-semibold border transition-colors ${
                           showDbDetailPanel &&
-                          (selectedServiceMenuItem === 'Formación' ? formacionDemoPanel : incapDemoPanel) === 'informe'
+                          (selectedServiceMenuItem === 'Formación'
+                            ? formacionDemoPanel
+                            : selectedServiceMenuItem === 'Accidentalidad'
+                              ? accidentalidadDemoPanel
+                              : incapDemoPanel) === 'informe'
                             ? 'border-[#00502c] bg-[#00502c] text-white'
                             : 'border-[#d6dce5] bg-white text-gray-700 hover:bg-gray-50'
                         }`}
                       >
                         {selectedServiceMenuItem === 'Formación'
                           ? 'Informe consolidado'
-                          : 'Informe consolidado FT-GEI-SO-016'}
+                          : selectedServiceMenuItem === 'Accidentalidad'
+                            ? 'Informe consolidado FT-GEI-SO-017'
+                            : 'Informe consolidado FT-GEI-SO-016'}
                       </button>
                     </div>
                   ) : (
@@ -4753,7 +5419,7 @@ export default function App() {
                   </button>
                   )
                 )}
-                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && (
+                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && (
                   <button
                     onClick={handleDownloadSgiReport}
                     className="px-3 py-2 rounded-soft text-xs font-semibold border border-[#006b3d] bg-[#006b3d] text-white hover:bg-[#00502c] transition-colors"
@@ -4763,7 +5429,7 @@ export default function App() {
                 )}
                 </div>
 
-                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && (
+                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && (
                   <div className="flex flex-wrap items-center gap-2">
                     {selectedServiceMenuItem === 'Comportamientos inseguros' && (
                       <select
@@ -4786,6 +5452,18 @@ export default function App() {
                         <option value="">Todos los años</option>
                         {incapYearOptions.map((year) => (
                           <option key={`incap-year-${year}`} value={year}>{year}</option>
+                        ))}
+                      </select>
+                    )}
+                    {selectedServiceMenuItem === 'Accidentalidad' && (
+                      <select
+                        value={accidentalidadYearFilter}
+                        onChange={(e) => setAccidentalidadYearFilter(e.target.value)}
+                        className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                      >
+                        <option value="">Todos los años</option>
+                        {accidentalidadYearOptions.map((year) => (
+                          <option key={`acc-year-${year}`} value={year}>{year}</option>
                         ))}
                       </select>
                     )}
@@ -5118,6 +5796,384 @@ export default function App() {
                   </div>
                 </div>
               )}
+                </>
+              )}
+              {selectedServiceMenuItem === 'Accidentalidad' && (
+                <>
+                  {!accidentalidadYearFilter && (
+                    <p className="text-[11px] text-gray-500">
+                      Indicadores FT-GEI-SO-017 mostrando cierre {accidentalidadIndicators.sourceYear}. Seleccione año o rango de fechas para acotar la vista.
+                    </p>
+                  )}
+                  {accidentalidadYearFilter && !accidentalidadIndicators.hasInforme && (
+                    <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-soft px-3 py-2">
+                      No hay informe FT-GEI-SO-017 consolidado para {accidentalidadYearFilter}.
+                    </p>
+                  )}
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6 gap-3">
+                    <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Eventos en BD</p>
+                      <p className="text-2xl font-bold text-[#191c1d] mt-1">{accidentalidadIndicators.totalEventsBd}</p>
+                      <p className="text-[10px] text-gray-500 mt-1">bd_AT_SV_IT_2026</p>
+                    </div>
+                    <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Incidentes laborales</p>
+                      <p className="text-2xl font-bold text-[#00502c] mt-1">{Math.round(accidentalidadIndicators.laborIncidents)}</p>
+                    </div>
+                    <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Acc. incapacitantes</p>
+                      <p className="text-2xl font-bold text-[#ba1a1a] mt-1">{Math.round(accidentalidadIndicators.disablingAccidents)}</p>
+                    </div>
+                    <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Siniestros viales laborales</p>
+                      <p className="text-2xl font-bold text-[#9a7b00] mt-1">{Math.round(accidentalidadIndicators.laborRoadAccidents)}</p>
+                    </div>
+                    <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Días perdidos A.L</p>
+                      <p className="text-2xl font-bold text-[#ba1a1a] mt-1">{Math.round(accidentalidadIndicators.lostDaysAl)}</p>
+                    </div>
+                    <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Trabajadores mes</p>
+                      <p className="text-2xl font-bold text-[#191c1d] mt-1">{Math.round(accidentalidadIndicators.workersMonth)}</p>
+                      <p className="text-[10px] text-gray-500 mt-1">
+                        {accidentalidadSelectedMonthIndex === null
+                          ? 'Promedio anual'
+                          : ACCIDENTALIDAD_INFORME_MONTH_LABELS[accidentalidadSelectedMonthIndex]}
+                      </p>
+                    </div>
+                  </div>
+
+                  {sgiSubIndicator === '1' && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Ind. frecuencia (IF)</p>
+                          <p className="text-2xl font-bold text-[#00502c] mt-1">{accidentalidadIndicators.frequencyIndex.toFixed(3)}</p>
+                        </div>
+                        <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Ind. severidad (IS)</p>
+                          <p className="text-2xl font-bold text-[#00502c] mt-1">{accidentalidadIndicators.severityIndex.toFixed(3)}</p>
+                        </div>
+                        <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">ILI</p>
+                          <p className="text-2xl font-bold text-[#00502c] mt-1">{accidentalidadIndicators.ili.toFixed(6)}</p>
+                        </div>
+                        <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Tasa accidentalidad (TA)</p>
+                          <p className="text-2xl font-bold text-[#00502c] mt-1">{accidentalidadIndicators.accidentRate.toFixed(3)}</p>
+                        </div>
+                      </div>
+                      {(() => {
+                        const iliStyles = getAccidentalidadIliStatusStyles(accidentalidadCurrentIliStatus);
+                        return (
+                          <div className={`rounded-soft border p-4 ${iliStyles.bg} ${iliStyles.border}`}>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <p className="text-[11px] uppercase tracking-wide font-semibold text-gray-600">ILI vs meta mensual</p>
+                                <p className={`text-2xl font-bold mt-1 ${iliStyles.text}`}>
+                                  {accidentalidadIndicators.ili.toFixed(6)}
+                                  <span className="text-sm font-semibold text-gray-600 ml-2">
+                                    / meta {accidentalidadIndicators.iliMeta.toFixed(6)}
+                                  </span>
+                                </p>
+                              </div>
+                              <span className={`px-3 py-1 rounded-full text-xs font-bold border ${iliStyles.bg} ${iliStyles.text} ${iliStyles.border}`}>
+                                {iliStyles.label}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Eventos e incidentes (informe FT-GEI-SO-017)</p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
+                          {[
+                            { label: '01-Incidentes laborales', value: accidentalidadIndicators.laborIncidents },
+                            { label: '02-Acc. incapacitantes', value: accidentalidadIndicators.disablingAccidents },
+                            { label: '03-Acc. sin incapacidad', value: accidentalidadIndicators.nonDisablingAccidents },
+                            { label: '04-Siniestro vial laboral', value: accidentalidadIndicators.laborRoadAccidents },
+                            { label: '04-Siniestro vial NO laboral', value: accidentalidadIndicators.nonLaborRoadAccidents },
+                            { label: 'Medio ambiente', value: accidentalidadIndicators.environmentalAccidents },
+                            { label: '09-Acc. trabajo mortal', value: accidentalidadIndicators.workFatalities }
+                          ].map((item) => (
+                            <div key={item.label} className="bg-white border border-[#eaecf0] rounded-soft p-2.5">
+                              <p className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold line-clamp-2">{item.label}</p>
+                              <p className="text-lg font-bold text-[#191c1d] mt-1 font-mono">{Math.round(item.value)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Días perdidos y recursos operativos</p>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          {[
+                            { label: '05-Días perdidos A.L', value: Math.round(accidentalidadIndicators.lostDaysAl) },
+                            { label: '06-Días siniestro vial laboral', value: Math.round(accidentalidadIndicators.lostDaysRoadLabor) },
+                            { label: '11-Días siniestro vial NO laboral', value: Math.round(accidentalidadIndicators.lostDaysRoadNonLabor) },
+                            { label: '07-Trabajadores mes', value: Math.round(accidentalidadIndicators.workersMonth) },
+                            { label: '08-HHT', value: Math.round(accidentalidadIndicators.hht) }
+                          ].map((item) => (
+                            <div key={item.label} className="bg-white border border-[#eaecf0] rounded-soft p-2.5">
+                              <p className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold line-clamp-2">{item.label}</p>
+                              <p className="text-lg font-bold text-[#191c1d] mt-1 font-mono">{item.value}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Desglose de siniestros viales</p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
+                          {[
+                            { label: 'Mortal conductor Emprestur', value: accidentalidadIndicators.roadMortalDriver },
+                            { label: 'Mortal otro actor vial', value: accidentalidadIndicators.roadMortalOther },
+                            { label: 'Grave conductor Emprestur', value: accidentalidadIndicators.roadGraveDriver },
+                            { label: 'Grave otro actor vial', value: accidentalidadIndicators.roadGraveOther },
+                            { label: 'Leve conductor Emprestur', value: accidentalidadIndicators.roadLeveDriver },
+                            { label: 'Leve otro actor vial', value: accidentalidadIndicators.roadLeveOther },
+                            { label: 'Choque simple', value: accidentalidadIndicators.roadSimpleCrash }
+                          ].map((item) => (
+                            <div key={item.label} className="bg-white border border-[#eaecf0] rounded-soft p-2.5">
+                              <p className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold line-clamp-2">{item.label}</p>
+                              <p className="text-lg font-bold text-[#191c1d] mt-1 font-mono">{Math.round(item.value)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Índices, tasas y proporciones</p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
+                          {[
+                            { label: 'IS siniestro vial incapacitante', value: `${accidentalidadIndicators.roadSeverityIndex.toFixed(3)}%`, isText: true },
+                            { label: 'Tasa SV en la labor', value: `${accidentalidadIndicators.roadLaborRate.toFixed(3)}%`, isText: true },
+                            { label: 'Tasa SV fuera de la labor', value: `${accidentalidadIndicators.roadNonLaborRate.toFixed(3)}%`, isText: true },
+                            { label: 'Proporción incidencia (PI*100W)', value: `${accidentalidadIndicators.incidenceProportion.toFixed(3)}%`, isText: true },
+                            { label: 'Proporción AT mortales', value: `${accidentalidadIndicators.mortalityProportion.toFixed(3)}%`, isText: true }
+                          ].map((item) => (
+                            <div key={item.label} className="bg-white border border-[#eaecf0] rounded-soft p-2.5">
+                              <p className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold line-clamp-2">{item.label}</p>
+                              <p className="text-lg font-bold text-[#191c1d] mt-1 font-mono">{item.value}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {sgiSubIndicator === '2' && (
+                    <div className="space-y-4">
+                      <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Tendencia mensual FT-GEI-SO-017</p>
+                        <div className="overflow-x-auto bg-white border border-[#eaecf0] rounded-soft">
+                          <table className="min-w-full text-xs">
+                            <thead className="bg-[#f8f9fa] border-b border-[#eaecf0] text-left text-gray-600">
+                              <tr>
+                                <th className="px-3 py-2">Indicador</th>
+                                {ACCIDENTALIDAD_INFORME_MONTH_LABELS.map((month) => (
+                                  <th key={`acc-trend-${month}`} className="px-2 py-2 text-center">{month}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#eef1f5]">
+                              {[
+                                { label: 'Incidentes laborales', key: 'laborIncidents' as const },
+                                { label: 'Acc. incapacitantes', key: 'disablingAccidents' as const },
+                                { label: 'Acc. sin incapacidad', key: 'nonDisablingAccidents' as const },
+                                { label: 'Siniestros viales laborales', key: 'laborRoadAccidents' as const },
+                                { label: 'Eventos BD', key: 'bdEvents' as const }
+                              ].map((row) => (
+                                <tr key={row.key}>
+                                  <td className="px-3 py-2 font-medium text-[#191c1d]">{row.label}</td>
+                                  {accidentalidadMonthlyTrend.map((month) => (
+                                    <td key={`${row.key}-${month.month}`} className="px-2 py-2 text-center font-mono">
+                                      {Math.round(month[row.key])}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        {[
+                          {
+                            title: 'Eventos registrados en BD',
+                            picker: (month: (typeof accidentalidadMonthlyTrend)[number]) => month.bdEvents
+                          },
+                          {
+                            title: 'Incidentes laborales (informe)',
+                            picker: (month: (typeof accidentalidadMonthlyTrend)[number]) => month.laborIncidents
+                          },
+                          {
+                            title: 'Accidentes incapacitantes (informe)',
+                            picker: (month: (typeof accidentalidadMonthlyTrend)[number]) => month.disablingAccidents
+                          },
+                          {
+                            title: 'Siniestros viales laborales (informe)',
+                            picker: (month: (typeof accidentalidadMonthlyTrend)[number]) => month.laborRoadAccidents
+                          }
+                        ].map((chart) => {
+                          const maxValue = Math.max(...accidentalidadMonthlyTrend.map((month) => chart.picker(month)), 1);
+                          const minValue = Math.min(...accidentalidadMonthlyTrend.map((month) => chart.picker(month)));
+                          return (
+                            <div key={chart.title} className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
+                              <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">{chart.title}</p>
+                              <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
+                                <div className="overflow-x-auto py-1">
+                                  <div className="flex gap-3 justify-between min-w-max px-1">
+                                    {accidentalidadMonthlyTrend.map((month) => {
+                                      const value = chart.picker(month);
+                                      const barHeight = getScaledBarHeight(value, maxValue);
+                                      const barColor = getGreenBarColor(value, minValue, maxValue);
+                                      return (
+                                        <div key={`${chart.title}-${month.label}`} className="min-w-[72px] w-[72px] flex flex-col items-center">
+                                          <div className="h-40 w-full flex flex-col justify-end items-center">
+                                            <div className="text-[11px] font-mono text-gray-700 mb-1 shrink-0 leading-none">
+                                              {Math.round(value)}
+                                            </div>
+                                            <div
+                                              className="rounded-t-sm w-[48px] shrink-0"
+                                              style={{
+                                                height: `${barHeight}%`,
+                                                minHeight: '6px',
+                                                backgroundColor: barColor
+                                              }}
+                                              title={`${month.label}: ${Math.round(value)}`}
+                                            />
+                                          </div>
+                                          <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {sgiSubIndicator === '3' && (
+                    <div className="space-y-4">
+                      <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft px-4 py-3">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Clasificación operativa (base de datos bd_AT_SV_IT_2026)</p>
+                        <p className="text-[11px] text-gray-600 mt-1">
+                          Tipo de vinculación, tipo de contratación, contrato/cliente, característica del evento y gravedad.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        {renderAccidentalidadStatList(
+                          'Tipo de vinculación',
+                          accidentalidadLinkTypeStats.slice(0, 8).map((row) => ({ label: row.label, total: row.total }))
+                        )}
+                        {renderAccidentalidadStatList(
+                          'Tipo de contratación',
+                          accidentalidadContractTypeStats.slice(0, 8).map((row) => ({ label: row.label, total: row.total }))
+                        )}
+                        {renderAccidentalidadStatList(
+                          'Contrato o cliente',
+                          accidentalidadClientStats.slice(0, 8).map((row) => ({ label: row.label, total: row.total }))
+                        )}
+                        {renderAccidentalidadStatList(
+                          'Característica del evento',
+                          accidentalidadCharacteristicStats.slice(0, 8).map((row) => ({ label: row.label, total: row.total }))
+                        )}
+                        {renderAccidentalidadStatList(
+                          'Clasificación por gravedad',
+                          accidentalidadSeverityStats.map((row) => ({ label: row.label, total: row.total }))
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        {renderAccidentalidadStatList(
+                          'Causas básicas (análisis tendencial por causalidad)',
+                          accidentalidadBasicCauseStats.map((row) => ({ label: row.label, total: row.total, hint: row.label }))
+                        )}
+                        {renderAccidentalidadStatList(
+                          'Causas inmediatas (análisis tendencial por daños)',
+                          accidentalidadImmediateCauseStats.map((row) => ({ label: row.label, total: row.total, hint: row.label }))
+                        )}
+                      </div>
+                      <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Análisis de reincidencia de accidentados</p>
+                        {accidentalidadReincidenceStats.length === 0 ? (
+                          <p className="text-xs text-gray-500 bg-white border border-[#eaecf0] rounded-soft p-3">
+                            No hay trabajadores con más de un evento en el filtro actual.
+                          </p>
+                        ) : (
+                          <div className="overflow-x-auto bg-white border border-[#eaecf0] rounded-soft">
+                            <table className="min-w-full text-xs">
+                              <thead className="bg-[#f8f9fa] border-b border-[#eaecf0] text-left text-gray-600">
+                                <tr>
+                                  <th className="px-3 py-2">Cédula</th>
+                                  <th className="px-3 py-2">Nombre</th>
+                                  <th className="px-3 py-2 text-center">Eventos</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-[#eef1f5]">
+                                {accidentalidadReincidenceStats.slice(0, 12).map((row) => (
+                                  <tr key={`acc-reinc-${row.cedula}`}>
+                                    <td className="px-3 py-2 font-mono">{row.cedula}</td>
+                                    <td className="px-3 py-2">{row.employeeName}</td>
+                                    <td className="px-3 py-2 text-center font-mono font-semibold text-[#ba1a1a]">{row.total}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {sgiSubIndicator === '4' && (
+                    <div className="space-y-4">
+                      <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">
+                          ILI vs meta mensual · {accidentalidadIndicators.sourceYear}
+                        </p>
+                        <div className="overflow-x-auto bg-white border border-[#eaecf0] rounded-soft p-3">
+                          <div className="flex gap-3 justify-between min-w-max px-1">
+                            {accidentalidadIliMetaComparison.map((month) => {
+                              const iliStyles = getAccidentalidadIliStatusStyles(month.status);
+                              const maxIli = Math.max(...accidentalidadIliMetaComparison.map((row) => row.ili), 0.000001);
+                              const barHeight = getScaledBarHeight(month.ili, maxIli);
+                              return (
+                                <div key={`acc-ili-${month.label}`} className="min-w-[88px] w-[88px] flex flex-col items-center">
+                                  <div className="h-36 w-full flex flex-col justify-end items-center">
+                                    <div className="text-[10px] font-mono text-gray-700 mb-1 shrink-0 leading-none">
+                                      {month.ili.toFixed(4)}
+                                    </div>
+                                    <div
+                                      className="rounded-t-sm w-[52px] shrink-0"
+                                      style={{
+                                        height: `${barHeight}%`,
+                                        minHeight: '6px',
+                                        backgroundColor:
+                                          month.status === 'ok'
+                                            ? '#006b3d'
+                                            : month.status === 'warn'
+                                              ? '#ffd000'
+                                              : '#ba1a1a'
+                                      }}
+                                      title={`${month.label}: ILI ${month.ili.toFixed(6)} / meta ${month.meta.toFixed(6)}`}
+                                    />
+                                  </div>
+                                  <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
+                                  <div className="text-[10px] text-gray-500">meta {month.meta.toFixed(4)}</div>
+                                  <span className={`mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold border ${iliStyles.bg} ${iliStyles.text} ${iliStyles.border}`}>
+                                    {iliStyles.label}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                      {renderAccidentalidadInformeSections(accidentalidadInformeSections, 'acc-tab4')}
+                    </div>
+                  )}
                 </>
               )}
               {selectedServiceMenuItem === 'Comportamientos inseguros' && (
@@ -5662,7 +6718,12 @@ export default function App() {
                   <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
                     <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
                       <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Actividades programadas</p>
-                      <p className="text-2xl font-bold text-[#00502c] mt-1">{Math.round(formacionIndicatorsFromInforme.programmedActivities)}</p>
+                      <p className="text-2xl font-bold text-[#00502c] mt-1">{Math.round(formacionKpiProgrammedActivities)}</p>
+                      {formacionSelectedMonthIndex !== null && (
+                        <p className="text-[10px] text-gray-500 mt-1">
+                          Mes {FORMACION_INFORME_MONTH_LABELS[formacionSelectedMonthIndex]}
+                        </p>
+                      )}
                     </div>
                     <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
                       <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Actividades ejecutadas</p>
@@ -5670,8 +6731,12 @@ export default function App() {
                     </div>
                     <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
                       <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Personal activo</p>
-                      <p className="text-2xl font-bold text-[#191c1d] mt-1">{Math.round(formacionIndicatorsFromInforme.activeStaff)}</p>
-                      <p className="text-[10px] text-gray-500 mt-1">Consolidado anual · No. de Empleados FT-GEI-SO-016</p>
+                      <p className="text-2xl font-bold text-[#191c1d] mt-1">{Math.round(formacionKpiActiveStaff)}</p>
+                      <p className="text-[10px] text-gray-500 mt-1">
+                        {formacionSelectedMonthIndex === null
+                          ? 'Consolidado anual · No. de Empleados FT-GEI-SO-016'
+                          : `${FORMACION_INFORME_MONTH_LABELS[formacionSelectedMonthIndex]} · No. de Empleados FT-GEI-SO-016`}
+                      </p>
                     </div>
                     <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
                       <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Participantes</p>
@@ -5951,7 +7016,7 @@ export default function App() {
                 </>
               )}
 
-              {!isLoadingSst && !sstLoadError && selectedServiceMenuItem === 'Acompañamiento presencial' && isDbTestConnected && showDbDetailPanel && (
+              {!isLoadingSst && !sstLoadError && selectedServiceMenuItem === 'Acompañamiento presencial' && sgiCanEditDatasets && showDbDetailPanel && (
                 <div className="border border-[#eaecf0] rounded-soft overflow-hidden">
                   <div className="bg-[#f8f9fa] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
                     <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
@@ -6069,7 +7134,7 @@ export default function App() {
                 </div>
               )}
 
-              {selectedServiceMenuItem === 'Comportamientos inseguros' && isDbTestConnected && showDbDetailPanel && (
+              {selectedServiceMenuItem === 'Comportamientos inseguros' && sgiCanEditDatasets && showDbDetailPanel && (
                 <div className="border border-[#eaecf0] rounded-soft overflow-hidden">
                   <div className="bg-[#f8f9fa] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
                     <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
@@ -6420,7 +7485,7 @@ export default function App() {
                 </div>
               )}
 
-              {selectedServiceMenuItem === 'Incapacidades' && isDbTestConnected && showDbDetailPanel && incapDemoPanel === 'bd' && (
+              {selectedServiceMenuItem === 'Incapacidades' && sgiCanEditDatasets && showDbDetailPanel && incapDemoPanel === 'bd' && (
                 <div className="border border-[#eaecf0] rounded-soft overflow-hidden">
                   <div className="bg-[#f8f9fa] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
                     <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
@@ -6702,7 +7767,7 @@ export default function App() {
                 </div>
               )}
 
-              {selectedServiceMenuItem === 'Incapacidades' && isDbTestConnected && showDbDetailPanel && incapDemoPanel === 'informe' && incapDemoInformeComputed && (
+              {selectedServiceMenuItem === 'Incapacidades' && sgiCanEditDatasets && showDbDetailPanel && incapDemoPanel === 'informe' && incapDemoInformeComputed && (
                 <div className="border border-[#eaecf0] rounded-soft overflow-hidden">
                   <div className="bg-[#f8f9fa] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
                     <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
@@ -6770,7 +7835,7 @@ export default function App() {
                 </div>
               )}
 
-              {selectedServiceMenuItem === 'Formación' && isDbTestConnected && showDbDetailPanel && formacionDemoPanel === 'bd' && (
+              {selectedServiceMenuItem === 'Formación' && sgiCanEditDatasets && showDbDetailPanel && formacionDemoPanel === 'bd' && (
                 <div className="border border-[#eaecf0] rounded-soft overflow-hidden">
                   <div className="bg-[#f8f9fa] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
                     <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
@@ -6892,7 +7957,7 @@ export default function App() {
                 </div>
               )}
 
-              {selectedServiceMenuItem === 'Formación' && isDbTestConnected && showDbDetailPanel && formacionDemoPanel === 'informe' && formacionDemoInformeComputed && (
+              {selectedServiceMenuItem === 'Formación' && sgiCanEditDatasets && showDbDetailPanel && formacionDemoPanel === 'informe' && formacionDemoInformeComputed && (
                 <div className="border border-[#eaecf0] rounded-soft overflow-hidden">
                   <div className="bg-[#f8f9fa] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
                     <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
@@ -6955,6 +8020,171 @@ export default function App() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                </div>
+              )}
+
+              {selectedServiceMenuItem === 'Accidentalidad' && sgiCanEditDatasets && showDbDetailPanel && accidentalidadDemoPanel === 'bd' && (
+                <div className="border border-[#eaecf0] rounded-soft overflow-hidden">
+                  <div className="bg-[#f8f9fa] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      Ingreso base de datos · bd_AT_SV_IT_2026
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleRestoreAccidentalidadInitialData}
+                        className="px-3 py-1.5 rounded-soft text-xs font-semibold border border-[#d6dce5] bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+                      >
+                        Restaurar BD inicial
+                      </button>
+                      <div className="text-[11px] text-gray-500">
+                        {accidentalidadFilteredRecords.length} registro(s)
+                      </div>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs" style={{ minWidth: '2400px' }}>
+                      <thead className="bg-white border-b border-[#eaecf0] text-left text-gray-600">
+                        <tr>
+                          <th className="px-3 py-2">Fecha evento</th>
+                          <th className="px-3 py-2">Fecha reporte</th>
+                          <th className="px-3 py-2">Cédula</th>
+                          <th className="px-3 py-2 min-w-[200px]">Empleado</th>
+                          <th className="px-3 py-2">Contrato o cliente</th>
+                          <th className="px-3 py-2">Tipo vinculación</th>
+                          <th className="px-3 py-2">Tipo contratación</th>
+                          <th className="px-3 py-2">Característica</th>
+                          <th className="px-3 py-2">Gravedad</th>
+                          <th className="px-3 py-2">Durante servicio</th>
+                          <th className="px-3 py-2 min-w-[220px]">Descripción riesgo</th>
+                          <th className="px-3 py-2">Acciones</th>
+                        </tr>
+                        <tr className="border-t border-[#eef1f5] bg-[#f8f9fa]">
+                          <th className="px-2 py-2">
+                            <input type="date" value={accidentalidadForm.eventDate} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, eventDate: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                          </th>
+                          <th className="px-2 py-2">
+                            <input type="date" value={accidentalidadForm.reportDate} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, reportDate: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                          </th>
+                          <th className="px-2 py-2">
+                            <input value={accidentalidadForm.cedula} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, cedula: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                          </th>
+                          <th className="px-2 py-2">
+                            <input value={accidentalidadForm.employeeName} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, employeeName: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                          </th>
+                          <th className="px-2 py-2">
+                            <input value={accidentalidadForm.client} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, client: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                          </th>
+                          <th className="px-2 py-2">
+                            <input value={accidentalidadForm.linkType} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, linkType: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                          </th>
+                          <th className="px-2 py-2">
+                            <input value={accidentalidadForm.contractType} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, contractType: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                          </th>
+                          <th className="px-2 py-2">
+                            <input value={accidentalidadForm.characteristic} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, characteristic: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                          </th>
+                          <th className="px-2 py-2">
+                            <input value={accidentalidadForm.severity} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, severity: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                          </th>
+                          <th className="px-2 py-2">
+                            <input value={accidentalidadForm.duringService} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, duringService: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                          </th>
+                          <th className="px-2 py-2">
+                            <input value={accidentalidadForm.riskDescription} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, riskDescription: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                          </th>
+                          <th className="px-2 py-2 whitespace-nowrap">
+                            <button type="button" onClick={handleAccidentalidadFormSubmit} className="px-2 py-1 rounded-soft bg-[#006b3d] text-white font-semibold mr-1">
+                              {editingAccidentalidadId ? 'Guardar' : 'Agregar'}
+                            </button>
+                            {editingAccidentalidadId && (
+                              <button type="button" onClick={resetAccidentalidadForm} className="px-2 py-1 rounded-soft border border-[#d6dce5] bg-white text-gray-700">
+                                Cancelar
+                              </button>
+                            )}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#eef1f5]">
+                        {accidentalidadFilteredRecords.slice(0, 250).map((row) => (
+                          <tr key={row.id}>
+                            <td className="px-3 py-2">{row.eventDateLabel}</td>
+                            <td className="px-3 py-2">{row.reportDateLabel}</td>
+                            <td className="px-3 py-2 font-mono">{row.cedula}</td>
+                            <td className="px-3 py-2">{row.employeeName}</td>
+                            <td className="px-3 py-2">{row.client}</td>
+                            <td className="px-3 py-2">{row.linkType}</td>
+                            <td className="px-3 py-2">{row.contractType}</td>
+                            <td className="px-3 py-2">{row.characteristic}</td>
+                            <td className="px-3 py-2">{row.severity}</td>
+                            <td className="px-3 py-2">{row.duringService}</td>
+                            <td className="px-3 py-2 min-w-[260px]">{row.riskDescription}</td>
+                            <td className="px-3 py-2">
+                              <button type="button" onClick={() => handleEditAccidentalidadRecord(row)} className="text-[#006b3d] font-semibold hover:underline">
+                                Editar
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {accidentalidadFilteredRecords.length > 250 && (
+                      <p className="text-[11px] text-gray-500 px-3 py-2 border-t border-[#eaecf0]">
+                        Mostrando 250 de {accidentalidadFilteredRecords.length} registros. Use filtros de año o fechas para acotar la vista.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {selectedServiceMenuItem === 'Accidentalidad' && sgiCanEditDatasets && showDbDetailPanel && accidentalidadDemoPanel === 'informe' && (
+                <div className="border border-[#eaecf0] rounded-soft overflow-hidden">
+                  <div className="bg-[#f8f9fa] px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      Informe consolidado FT-GEI-SO-017 · {accidentalidadIndicators.sourceYear}
+                    </div>
+                    <div className="text-[11px] text-gray-500">
+                      Verde: ILI dentro de meta · Amarillo: atención · Rojo: fuera de meta
+                    </div>
+                  </div>
+                  <div className="p-4 space-y-4">
+                    <div className="overflow-x-auto bg-white border border-[#eaecf0] rounded-soft p-3">
+                      <div className="flex gap-3 justify-between min-w-max px-1">
+                        {accidentalidadIliMetaComparison.map((month) => {
+                          const iliStyles = getAccidentalidadIliStatusStyles(month.status);
+                          const maxIli = Math.max(...accidentalidadIliMetaComparison.map((row) => row.ili), 0.000001);
+                          const barHeight = getScaledBarHeight(month.ili, maxIli);
+                          return (
+                            <div key={`acc-db-ili-${month.label}`} className="min-w-[88px] w-[88px] flex flex-col items-center">
+                              <div className="h-32 w-full flex flex-col justify-end items-center">
+                                <div className="text-[10px] font-mono text-gray-700 mb-1 shrink-0 leading-none">
+                                  {month.ili.toFixed(4)}
+                                </div>
+                                <div
+                                  className="rounded-t-sm w-[52px] shrink-0"
+                                  style={{
+                                    height: `${barHeight}%`,
+                                    minHeight: '6px',
+                                    backgroundColor:
+                                      month.status === 'ok'
+                                        ? '#006b3d'
+                                        : month.status === 'warn'
+                                          ? '#ffd000'
+                                          : '#ba1a1a'
+                                  }}
+                                />
+                              </div>
+                              <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
+                              <span className={`mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold border ${iliStyles.bg} ${iliStyles.text} ${iliStyles.border}`}>
+                                {iliStyles.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {renderAccidentalidadInformeSections(accidentalidadInformeSections, 'acc-db-informe')}
                   </div>
                 </div>
               )}
@@ -7191,96 +8421,6 @@ export default function App() {
         )}
 
       </main>
-
-      {showRegisterModal && (
-        <div className="fixed inset-0 z-[70] bg-black/35 backdrop-blur-[1px] flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-white rounded-soft border border-[#eaecf0] shadow-lg">
-            <div className="px-4 py-3 border-b border-[#eaecf0] flex items-center justify-between">
-              <h3 className="text-sm font-bold text-[#191c1d]">Registro para base de datos</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowRegisterModal(false);
-                  setRegisterError('');
-                  setRegisterEmail('');
-                }}
-                className="text-gray-500 hover:text-gray-700 text-lg leading-none"
-                aria-label="Cerrar"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="p-4 space-y-3">
-              <p className="text-sm text-gray-700">
-                Ingresa tu correo corporativo para acceder a la base de datos del tablero SGI.
-              </p>
-              <div>
-                <label htmlFor="register-email" className="block text-xs font-semibold text-gray-600 mb-1">
-                  Correo electrónico
-                </label>
-                <input
-                  id="register-email"
-                  type="email"
-                  value={registerEmail}
-                  onChange={(event) => {
-                    setRegisterEmail(event.target.value);
-                    if (registerError) setRegisterError('');
-                  }}
-                  onBlur={() => {
-                    const email = registerEmail.trim();
-                    if (email && !isEmpresturEmail(email)) {
-                      setRegisterError('error en registro de correo electronico');
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') void handleRegisterSubmit();
-                  }}
-                  placeholder="nombre@emprestur.com"
-                  autoComplete="email"
-                  className="w-full px-3 py-2 text-sm border border-[#d6dce5] rounded-soft focus:outline-none focus:ring-2 focus:ring-[#006b3d]/30 focus:border-[#006b3d]"
-                />
-                {registerError && (
-                  <p className="mt-1.5 text-xs text-red-600 font-medium">{registerError}</p>
-                )}
-              </div>
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowRegisterModal(false);
-                    setRegisterError('');
-                    setRegisterEmail('');
-                  }}
-                  className="px-3 py-2 text-xs font-semibold border border-[#d6dce5] rounded-soft text-gray-700 hover:bg-gray-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleRegisterSubmit()}
-                  disabled={isRegisterSubmitting}
-                  className="px-3 py-2 text-xs font-semibold rounded-soft border border-[#006b3d] bg-[#006b3d] text-white hover:bg-[#00502c] disabled:opacity-60"
-                >
-                  {isRegisterSubmitting ? 'Registrando...' : 'Registrarse'}
-                </button>
-              </div>
-              {ENABLE_DEMO_MODE_ENTRY && (
-                <div className="pt-2 border-t border-[#eaecf0]">
-                  <button
-                    type="button"
-                    onClick={() => void handleDemoModeEntry()}
-                    disabled={isRegisterSubmitting}
-                    className="w-full px-3 py-2 text-xs font-semibold rounded-soft border border-dashed border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
-                  >
-                    Ingresar modo prueba
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 5. Footer institucional */}
       <footer className="bg-white border-t border-[#eaecf0] py-4 text-xs text-gray-500 font-mono mt-8">

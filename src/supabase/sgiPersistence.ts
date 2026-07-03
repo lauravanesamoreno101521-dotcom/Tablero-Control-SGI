@@ -5,6 +5,7 @@ export const SGI_DATASET_KEYS = {
   comportamientos: 'comportamientos_inseguros',
   incapacidades: 'incapacidades_bd',
   formacion: 'formacion_bd',
+  accidentalidad: 'accidentalidad_bd',
   incapInformeEdits: 'incap_informe_edits',
   formacionInformeEdits: 'formacion_informe_edits'
 } as const;
@@ -16,6 +17,7 @@ export type SgiPersistedDatasets = {
   comportamientos: unknown[];
   incapacidades: unknown[];
   formacion: unknown[];
+  accidentalidad: unknown[];
   incapInformeEdits: Record<string, unknown>;
   formacionInformeEdits: Record<string, unknown>;
 };
@@ -63,46 +65,6 @@ const serializeForStorage = (value: unknown): unknown => {
   return next;
 };
 
-export async function registerUserEmail(email: string): Promise<{ ok: boolean; error?: string }> {
-  if (!isSupabaseConfigured()) {
-    return { ok: false, error: 'Supabase no está configurado. Agrega VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en .env' };
-  }
-
-  const supabase = getSupabaseClient();
-  if (!supabase) return { ok: false, error: 'No se pudo conectar con Supabase.' };
-
-  const normalizedEmail = email.trim().toLowerCase();
-  const now = new Date().toISOString();
-
-  const { data: existing, error: lookupError } = await supabase
-    .from('registered_users')
-    .select('id')
-    .eq('email', normalizedEmail)
-    .maybeSingle();
-
-  if (lookupError) {
-    return { ok: false, error: lookupError.message };
-  }
-
-  if (existing) {
-    const { error: updateError } = await supabase
-      .from('registered_users')
-      .update({ last_login_at: now })
-      .eq('email', normalizedEmail);
-    if (updateError) return { ok: false, error: updateError.message };
-    return { ok: true };
-  }
-
-  const { error: insertError } = await supabase.from('registered_users').insert({
-    email: normalizedEmail,
-    registered_at: now,
-    last_login_at: now
-  });
-
-  if (insertError) return { ok: false, error: insertError.message };
-  return { ok: true };
-}
-
 async function loadDataset(key: SgiDatasetKey): Promise<unknown | null> {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
@@ -140,7 +102,8 @@ const hasObjectData = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0;
 
 export async function loadSgiDatasetsFromSupabase(
-  baselines: SgiPersistedDatasets
+  baselines: SgiPersistedDatasets,
+  updatedByEmail: string
 ): Promise<SgiPersistedDatasets> {
   if (!isSupabaseConfigured()) return baselines;
 
@@ -149,6 +112,7 @@ export async function loadSgiDatasetsFromSupabase(
     comportamientosRaw,
     incapacidadesRaw,
     formacionRaw,
+    accidentalidadRaw,
     incapInformeEditsRaw,
     formacionInformeEditsRaw
   ] = await Promise.all([
@@ -156,6 +120,7 @@ export async function loadSgiDatasetsFromSupabase(
     loadDataset(SGI_DATASET_KEYS.comportamientos),
     loadDataset(SGI_DATASET_KEYS.incapacidades),
     loadDataset(SGI_DATASET_KEYS.formacion),
+    loadDataset(SGI_DATASET_KEYS.accidentalidad),
     loadDataset(SGI_DATASET_KEYS.incapInformeEdits),
     loadDataset(SGI_DATASET_KEYS.formacionInformeEdits)
   ]);
@@ -172,6 +137,9 @@ export async function loadSgiDatasetsFromSupabase(
   const formacion = hasArrayData(formacionRaw)
     ? (reviveDates(formacionRaw) as unknown[])
     : baselines.formacion;
+  const accidentalidad = hasArrayData(accidentalidadRaw)
+    ? (reviveDates(accidentalidadRaw) as unknown[])
+    : baselines.accidentalidad;
   const incapInformeEdits = hasObjectData(incapInformeEditsRaw)
     ? (incapInformeEditsRaw as Record<string, unknown>)
     : baselines.incapInformeEdits;
@@ -184,6 +152,7 @@ export async function loadSgiDatasetsFromSupabase(
     comportamientos,
     incapacidades,
     formacion,
+    accidentalidad,
     incapInformeEdits,
     formacionInformeEdits
   };
@@ -193,6 +162,7 @@ export async function loadSgiDatasetsFromSupabase(
   if (!hasArrayData(comportamientosRaw)) seedPayload.comportamientos = baselines.comportamientos;
   if (!hasArrayData(incapacidadesRaw)) seedPayload.incapacidades = baselines.incapacidades;
   if (!hasArrayData(formacionRaw)) seedPayload.formacion = baselines.formacion;
+  if (!hasArrayData(accidentalidadRaw)) seedPayload.accidentalidad = baselines.accidentalidad;
   if (!hasObjectData(incapInformeEditsRaw)) seedPayload.incapInformeEdits = baselines.incapInformeEdits;
   if (!hasObjectData(formacionInformeEditsRaw)) seedPayload.formacionInformeEdits = baselines.formacionInformeEdits;
 
@@ -203,10 +173,11 @@ export async function loadSgiDatasetsFromSupabase(
         comportamientos: seedPayload.comportamientos ?? loaded.comportamientos,
         incapacidades: seedPayload.incapacidades ?? loaded.incapacidades,
         formacion: seedPayload.formacion ?? loaded.formacion,
+        accidentalidad: seedPayload.accidentalidad ?? loaded.accidentalidad,
         incapInformeEdits: seedPayload.incapInformeEdits ?? loaded.incapInformeEdits,
         formacionInformeEdits: seedPayload.formacionInformeEdits ?? loaded.formacionInformeEdits
       },
-      'system@emprestur.com'
+      updatedByEmail
     );
   }
 
@@ -224,6 +195,7 @@ export async function persistSgiDatasetsToSupabase(
     saveDataset(SGI_DATASET_KEYS.comportamientos, datasets.comportamientos, updatedByEmail),
     saveDataset(SGI_DATASET_KEYS.incapacidades, datasets.incapacidades, updatedByEmail),
     saveDataset(SGI_DATASET_KEYS.formacion, datasets.formacion, updatedByEmail),
+    saveDataset(SGI_DATASET_KEYS.accidentalidad, datasets.accidentalidad, updatedByEmail),
     saveDataset(SGI_DATASET_KEYS.incapInformeEdits, datasets.incapInformeEdits, updatedByEmail),
     saveDataset(SGI_DATASET_KEYS.formacionInformeEdits, datasets.formacionInformeEdits, updatedByEmail)
   ]);
