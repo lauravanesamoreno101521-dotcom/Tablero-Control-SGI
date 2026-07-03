@@ -1,4 +1,4 @@
-import empresturLogo from '../Logo Emprestur.jpeg';
+import empresturLogo from '../../Logo Emprestur.jpeg';
 
 type AuthMode = 'login' | 'register';
 
