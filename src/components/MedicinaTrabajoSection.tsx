@@ -7,6 +7,7 @@ import {
   type MedicinaMonthlyPoint,
   type MedicinaTrabajoRecord
 } from '../medicinaTrabajoDemo.ts';
+import { getScaledBarHeight, renderSgiVerticalBar } from '../sgiBarChart.tsx';
 
 type MedicinaTrabajoSectionProps = {
   subIndicator: string;
@@ -198,18 +199,26 @@ export default function MedicinaTrabajoSection({
                 <div key={chart.title} className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
                   <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">{chart.title}</p>
                   <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
-                    <div className="h-56 flex items-end gap-2 justify-between overflow-x-auto">
-                      {monthlyTrend.map((month) => {
-                        const value = month[chart.key];
-                        const height = `${Math.max((value / maxValue) * 100, value > 0 ? 8 : 2)}%`;
-                        return (
-                          <div key={`${chart.key}-${month.label}`} className="flex flex-col items-center min-w-[28px] flex-1">
-                            <span className="text-[10px] font-mono text-gray-600 mb-1">{value || ''}</span>
-                            <div className="w-full max-w-[24px] rounded-t-sm" style={{ height, backgroundColor: chart.color, minHeight: value > 0 ? '8px' : '2px' }} />
-                            <span className="text-[10px] text-gray-500 mt-1">{month.label}</span>
-                          </div>
-                        );
-                      })}
+                    <div className="overflow-x-auto overflow-y-visible py-2">
+                      <div className="flex gap-2 justify-between min-w-max px-1">
+                        {monthlyTrend.map((month) => {
+                          const value = month[chart.key];
+                          return (
+                            <div key={`${chart.key}-${month.label}`} className="flex flex-col items-center min-w-[36px]">
+                              {renderSgiVerticalBar(
+                                value > 0 ? String(value) : '0',
+                                getScaledBarHeight(value, maxValue),
+                                chart.color,
+                                {
+                                  barWidthClass: 'w-[24px]',
+                                  title: `${month.label}: ${value}`
+                                }
+                              )}
+                              <span className="text-[10px] text-gray-500 mt-2">{month.label}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>

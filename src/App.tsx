@@ -63,6 +63,7 @@ import {
   parseSpanishDate,
   parseUnknownDate
 } from './incapDateUtils.ts';
+import { getScaledBarHeight, renderSgiGroupedVerticalBars, renderSgiVerticalBar } from './sgiBarChart.tsx';
 import formacionBdRaw from './formacionBdData.json';
 import formacionInformeRaw from './formacionInformeData.json';
 import {
@@ -656,40 +657,6 @@ const getGreenBarColor = (value: number, minValue: number, maxValue: number): st
   return `hsl(150, ${barSaturation}%, ${barLightness}%)`;
 };
 
-const getScaledBarHeight = (value: number, maxValue: number, minHeight = 6): number =>
-  maxValue <= 0 ? minHeight : Math.max((value / maxValue) * 100, minHeight);
-
-const renderSstVerticalBar = (
-  valueLabel: string,
-  barHeightPercent: number,
-  barColor: string,
-  options?: { barWidthClass?: string; labelClassName?: string; title?: string; barAreaClass?: string }
-) => (
-  <div className="w-full flex flex-col items-center">
-    <div className="min-h-[1.5rem] w-full flex items-center justify-center shrink-0 px-0.5">
-      <span
-        className={
-          options?.labelClassName ??
-          'text-[10px] font-mono text-[#00502c] leading-none font-semibold whitespace-nowrap'
-        }
-      >
-        {valueLabel}
-      </span>
-    </div>
-    <div className={`h-40 w-full flex items-end justify-center ${options?.barAreaClass ?? ''}`}>
-      <div
-        className={`rounded-t-sm shrink-0 ${options?.barWidthClass ?? 'w-[54px]'}`}
-        style={{
-          height: `${barHeightPercent}%`,
-          minHeight: '6px',
-          backgroundColor: barColor
-        }}
-        title={options?.title}
-      />
-    </div>
-  </div>
-);
-
 const getAccidentalidadIliStatusStyles = (status: AccidentalidadIliStatus) => {
   if (status === 'ok') {
     return {
@@ -792,7 +759,28 @@ const normalizeSgiTopicLabel = (topic: string): string => {
   if (/inspecci[oó]n/i.test(topic)) return 'Inspecciones';
   if (/pevs|pesv/i.test(topic)) return 'PEVS';
   if (/peligros?\s*y\s*riesgos?/i.test(topic)) return 'Peligros y Riesgos';
+  if (
+    /prevenci[oó]n\s+(del\s+)?consumo\s+(de\s+)?(alcohol|alochol|drogras|sustancias(\s+psicoactivas)?)/i.test(topic) ||
+    /prevenci[oó]n\s+(de\s+la\s+|de\s+)?embriaguez/i.test(topic) ||
+    /prevenci[oó]n\s+consumo\s+alochol/i.test(topic)
+  ) {
+    return 'Prevención del consumo de alcohol y sustancias psicoactivas';
+  }
   if (/tamizaje/i.test(topic)) return 'Tamizajes';
+  if (/socializaci[oó]n(\s+(de\s+)?)?examenes?(\s+medicos?)?/i.test(topic)) {
+    return 'Socialización de exámenes médicos';
+  }
+  if (/conducci[oó]n\s+(a\s+la\s+defensiva|preventiva)|manejo\s+defensivo/i.test(topic)) {
+    return 'Conducción preventiva y a la defensiva';
+  }
+  if (
+    /reportes?\s+(de\s+)?(accidentes?(\s+de\s+trabajo(\s+y\s+siniestros\s+viales)?)?|at\b|novedades|condiciones\s+inseguras)/i.test(
+      topic
+    ) ||
+    /^condiciones\s+inseguras$/i.test(topic)
+  ) {
+    return 'Reporte de novedades, condiciones inseguras, AT o siniestros viales';
+  }
   return topic;
 };
 
@@ -6098,7 +6086,7 @@ export default function App() {
 
                                 return (
                                   <div key={row.client} className="min-w-[100px] w-[100px] flex flex-col items-center">
-                                    {renderSstVerticalBar(
+                                    {renderSgiVerticalBar(
                                       `${row.accompanimentRate.toFixed(1)}%`,
                                       barHeight,
                                       barColor,
@@ -6163,14 +6151,13 @@ export default function App() {
                               const barColor = getGreenBarColor(month.impacted, minValue, maxValue);
                               return (
                                 <div key={month.label} className="min-w-[88px] w-[88px] flex flex-col items-center">
-                                  {renderSstVerticalBar(
+                                  {renderSgiVerticalBar(
                                     String(month.impacted),
                                     barHeight,
                                     barColor,
                                     {
                                       barWidthClass: 'w-[58px]',
-                                      labelClassName:
-                                        'text-[11px] font-mono text-gray-700 leading-none font-semibold whitespace-nowrap',
+                                      labelColor: barColor,
                                       title: `${month.label.toUpperCase()}: ${month.impacted} personas (${month.visits} visitas)`
                                     }
                                   )}
@@ -6467,7 +6454,7 @@ export default function App() {
                             <div key={chart.title} className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
                               <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">{chart.title}</p>
                               <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
-                                <div className="overflow-x-auto py-1">
+                                <div className="overflow-x-auto overflow-y-visible py-2">
                                   <div className="flex gap-3 justify-between min-w-max px-1">
                                     {accidentalidadMonthlyTrend.map((month) => {
                                       const value = chart.picker(month);
@@ -6475,20 +6462,15 @@ export default function App() {
                                       const barColor = getGreenBarColor(value, minValue, maxValue);
                                       return (
                                         <div key={`${chart.title}-${month.label}`} className="min-w-[72px] w-[72px] flex flex-col items-center">
-                                          <div className="h-40 w-full flex flex-col justify-end items-center">
-                                            <div className="text-[11px] font-mono text-gray-700 mb-1 shrink-0 leading-none">
-                                              {Math.round(value)}
-                                            </div>
-                                            <div
-                                              className="rounded-t-sm w-[48px] shrink-0"
-                                              style={{
-                                                height: `${barHeight}%`,
-                                                minHeight: '6px',
-                                                backgroundColor: barColor
-                                              }}
-                                              title={`${month.label}: ${Math.round(value)}`}
-                                            />
-                                          </div>
+                                          {renderSgiVerticalBar(
+                                            String(Math.round(value)),
+                                            barHeight,
+                                            barColor,
+                                            {
+                                              barWidthClass: 'w-[48px]',
+                                              title: `${month.label}: ${Math.round(value)}`
+                                            }
+                                          )}
                                           <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
                                         </div>
                                       );
@@ -6581,33 +6563,25 @@ export default function App() {
                         <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">
                           ILI vs meta mensual · {accidentalidadIndicators.sourceYear}
                         </p>
-                        <div className="overflow-x-auto bg-white border border-[#eaecf0] rounded-soft p-3">
+                        <div className="overflow-x-auto overflow-y-visible py-2 bg-white border border-[#eaecf0] rounded-soft p-3">
                           <div className="flex gap-3 justify-between min-w-max px-1">
                             {accidentalidadIliMetaComparison.map((month) => {
                               const iliStyles = getAccidentalidadIliStatusStyles(month.status);
                               const maxIli = Math.max(...accidentalidadIliMetaComparison.map((row) => row.ili), 0.000001);
                               const barHeight = getScaledBarHeight(month.ili, maxIli);
+                              const barColor =
+                                month.status === 'ok' ? '#006b3d' : month.status === 'warn' ? '#ffd000' : '#ba1a1a';
                               return (
                                 <div key={`acc-ili-${month.label}`} className="min-w-[88px] w-[88px] flex flex-col items-center">
-                                  <div className="h-36 w-full flex flex-col justify-end items-center">
-                                    <div className="text-[10px] font-mono text-gray-700 mb-1 shrink-0 leading-none">
-                                      {month.ili.toFixed(4)}
-                                    </div>
-                                    <div
-                                      className="rounded-t-sm w-[52px] shrink-0"
-                                      style={{
-                                        height: `${barHeight}%`,
-                                        minHeight: '6px',
-                                        backgroundColor:
-                                          month.status === 'ok'
-                                            ? '#006b3d'
-                                            : month.status === 'warn'
-                                              ? '#ffd000'
-                                              : '#ba1a1a'
-                                      }}
-                                      title={`${month.label}: ILI ${month.ili.toFixed(6)} / meta ${month.meta.toFixed(6)}`}
-                                    />
-                                  </div>
+                                  {renderSgiVerticalBar(
+                                    month.ili.toFixed(4),
+                                    barHeight,
+                                    barColor,
+                                    {
+                                      barWidthClass: 'w-[52px]',
+                                      title: `${month.label}: ILI ${month.ili.toFixed(6)} / meta ${month.meta.toFixed(6)}`
+                                    }
+                                  )}
                                   <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
                                   <div className="text-[10px] text-gray-500">meta {month.meta.toFixed(4)}</div>
                                   <span className={`mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold border ${iliStyles.bg} ${iliStyles.text} ${iliStyles.border}`}>
@@ -6787,38 +6761,24 @@ export default function App() {
                             <div className="flex gap-3 justify-between min-w-max px-1">
                               {unsafeMonthlyTrend.map((month) => {
                                 const maxValue = Math.max(...unsafeMonthlyTrend.map((item) => item.total), 1);
-                                const totalHeight = getScaledBarHeight(month.total, maxValue);
-                                const closedHeight = getScaledBarHeight(month.closed, maxValue);
                                 return (
                                   <div key={month.label} className="min-w-[90px] flex flex-col items-center">
-                                    <div className="flex gap-1 w-full justify-center">
-                                      <div className="w-[28px]">
-                                        {renderSstVerticalBar(
-                                          String(month.total),
-                                          totalHeight,
-                                          '#ba1a1a',
-                                          {
-                                            barWidthClass: 'w-[22px]',
-                                            labelClassName:
-                                              'text-[10px] font-mono text-[#ba1a1a] leading-none font-semibold whitespace-nowrap',
-                                            title: `Reportados: ${month.total}`
-                                          }
-                                        )}
-                                      </div>
-                                      <div className="w-[28px]">
-                                        {renderSstVerticalBar(
-                                          String(month.closed),
-                                          closedHeight,
-                                          '#006b3d',
-                                          {
-                                            barWidthClass: 'w-[22px]',
-                                            labelClassName:
-                                              'text-[10px] font-mono text-[#006b3d] leading-none font-semibold whitespace-nowrap',
-                                            title: `Cerrados: ${month.closed}`
-                                          }
-                                        )}
-                                      </div>
-                                    </div>
+                                    {renderSgiGroupedVerticalBars(
+                                      [
+                                        {
+                                          value: month.total,
+                                          color: '#ba1a1a',
+                                          title: `Reportados: ${month.total}`
+                                        },
+                                        {
+                                          value: month.closed,
+                                          color: '#006b3d',
+                                          title: `Cerrados: ${month.closed}`
+                                        }
+                                      ],
+                                      maxValue,
+                                      { barWidthClass: 'w-[22px]', columnWidthClass: 'w-[28px]' }
+                                    )}
                                     <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
                                     <div className="text-[11px] text-gray-500">Cierre {month.closedRate.toFixed(1)}%</div>
                                   </div>
@@ -7024,23 +6984,34 @@ export default function App() {
                     <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
                       <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Tendencia mensual de incapacidades</p>
                       <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
-                        <div className="h-64 flex items-end gap-3 justify-between overflow-x-auto">
-                          {incapMonthlyStats.map((month) => {
-                            const maxValue = Math.max(...incapMonthlyStats.map((item) => item.totalDays), 1);
-                            const egHeight = (month.egDays / maxValue) * 100;
-                            const atHeight = (month.atDays / maxValue) * 100;
-                            return (
-                              <div key={`inc-month-${month.month}`} className="flex-1 min-w-[95px] flex flex-col items-center">
-                                <div className="text-[10px] font-mono text-gray-700 mb-1">{month.totalDays}</div>
-                                <div className="h-44 w-full flex items-end justify-center gap-1">
-                                  <div className="rounded-t-sm bg-[#006b3d]" style={{ width: '22px', height: `${Math.max(egHeight, 4)}%` }} title={`EG-AC: ${month.egDays}`} />
-                                  <div className="rounded-t-sm bg-[#ba1a1a]" style={{ width: '22px', height: `${Math.max(atHeight, 4)}%` }} title={`AT: ${month.atDays}`} />
+                        <div className="overflow-x-auto overflow-y-visible py-2">
+                          <div className="flex gap-3 justify-between min-w-max px-1">
+                            {incapMonthlyStats.map((month) => {
+                              const maxValue = Math.max(...incapMonthlyStats.map((item) => item.totalDays), 1);
+                              return (
+                                <div key={`inc-month-${month.month}`} className="min-w-[95px] flex flex-col items-center">
+                                  {renderSgiGroupedVerticalBars(
+                                    [
+                                      {
+                                        value: month.egDays,
+                                        color: '#006b3d',
+                                        title: `EG-AC: ${month.egDays} días`
+                                      },
+                                      {
+                                        value: month.atDays,
+                                        color: '#ba1a1a',
+                                        title: `AT: ${month.atDays} días`
+                                      }
+                                    ],
+                                    maxValue,
+                                    { barWidthClass: 'w-[22px]', columnWidthClass: 'w-[28px]' }
+                                  )}
+                                  <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
+                                  <div className="text-[11px] text-gray-500">{month.peopleCount} personas · {month.totalDays} días</div>
                                 </div>
-                                <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
-                                <div className="text-[11px] text-gray-500">{month.peopleCount} personas</div>
-                              </div>
-                            );
-                          })}
+                              );
+                            })}
+                          </div>
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-600">
                           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#006b3d]" /> EG-AC — Enfermedad general y accidente común</span>
@@ -7206,7 +7177,7 @@ export default function App() {
                   {sgiSubIndicator === '1' && (
                   <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
                     <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
-                      <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Actividades programadas</p>
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Temas programados</p>
                       <p className="text-2xl font-bold text-[#00502c] mt-1">{Math.round(formacionKpiProgrammedActivities)}</p>
                       {formacionSelectedMonthIndex !== null && (
                         <p className="text-[10px] text-gray-500 mt-1">
@@ -7215,7 +7186,7 @@ export default function App() {
                       )}
                     </div>
                     <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
-                      <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Actividades ejecutadas</p>
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Temas ejecutados</p>
                       <p className="text-2xl font-bold text-[#006b3d] mt-1">{Math.round(formacionIndicatorsFromInforme.executedActivities)}</p>
                     </div>
                     <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
@@ -7312,45 +7283,39 @@ export default function App() {
                       <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
                         <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Participantes y sesiones por mes</p>
                         <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
-                          <div className="h-72 flex items-end gap-2 justify-between overflow-x-auto pb-1">
-                            {formacionMonthlyStats.map((month) => {
-                              const maxValue = Math.max(
-                                ...formacionMonthlyStats.map((item) =>
-                                  Math.max(item.participantsCount, item.sessionsCount)
-                                ),
-                                1
-                              );
-                              const participantsHeight = (month.participantsCount / maxValue) * 100;
-                              const sessionsHeight = (month.sessionsCount / maxValue) * 100;
-                              return (
-                                <div key={`form-month-${month.month}`} className="flex-1 min-w-[84px] flex flex-col items-center">
-                                  <div className="grid grid-cols-2 gap-1 w-full mb-1 text-center">
-                                    <div>
-                                      <div className="text-[9px] uppercase text-[#006b3d] font-semibold leading-none">Part.</div>
-                                      <div className="text-[11px] font-mono font-bold text-[#006b3d]">{month.participantsCount}</div>
-                                    </div>
-                                    <div>
-                                      <div className="text-[9px] uppercase text-[#9a7b00] font-semibold leading-none">Ses.</div>
-                                      <div className="text-[11px] font-mono font-bold text-[#9a7b00]">{month.sessionsCount}</div>
-                                    </div>
+                          <div className="overflow-x-auto overflow-y-visible py-2">
+                            <div className="flex gap-2 justify-between min-w-max px-1">
+                              {formacionMonthlyStats.map((month) => {
+                                const maxValue = Math.max(
+                                  ...formacionMonthlyStats.map((item) =>
+                                    Math.max(item.participantsCount, item.sessionsCount)
+                                  ),
+                                  1
+                                );
+                                return (
+                                  <div key={`form-month-${month.month}`} className="min-w-[84px] flex flex-col items-center">
+                                    {renderSgiGroupedVerticalBars(
+                                      [
+                                        {
+                                          value: month.participantsCount,
+                                          color: '#006b3d',
+                                          title: `Participantes únicos: ${month.participantsCount}`
+                                        },
+                                        {
+                                          value: month.sessionsCount,
+                                          color: '#ffd000',
+                                          title: `Sesiones ejecutadas: ${month.sessionsCount}`
+                                        }
+                                      ],
+                                      maxValue,
+                                      { barWidthClass: 'w-[22px]', columnWidthClass: 'w-[28px]' }
+                                    )}
+                                    <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
+                                    <div className="text-[10px] text-gray-500">{month.coverageRate.toFixed(1)}% cobertura</div>
                                   </div>
-                                  <div className="h-40 w-full flex items-end justify-center gap-1.5">
-                                    <div
-                                      className="rounded-t-sm bg-[#006b3d] min-h-[4px]"
-                                      style={{ width: '22px', height: `${Math.max(participantsHeight, month.participantsCount > 0 ? 8 : 4)}%` }}
-                                      title={`Participantes únicos: ${month.participantsCount}`}
-                                    />
-                                    <div
-                                      className="rounded-t-sm bg-[#ffd000] min-h-[4px]"
-                                      style={{ width: '22px', height: `${Math.max(sessionsHeight, month.sessionsCount > 0 ? 8 : 4)}%` }}
-                                      title={`Sesiones ejecutadas: ${month.sessionsCount}`}
-                                    />
-                                  </div>
-                                  <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
-                                  <div className="text-[10px] text-gray-500">{month.coverageRate.toFixed(1)}% cobertura</div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
+                            </div>
                           </div>
                           <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-600">
                             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#006b3d]" /> Participantes únicos</span>
@@ -8638,32 +8603,25 @@ export default function App() {
                     </div>
                   </div>
                   <div className="p-4 space-y-4">
-                    <div className="overflow-x-auto bg-white border border-[#eaecf0] rounded-soft p-3">
+                    <div className="overflow-x-auto overflow-y-visible py-2 bg-white border border-[#eaecf0] rounded-soft p-3">
                       <div className="flex gap-3 justify-between min-w-max px-1">
                         {accidentalidadIliMetaComparison.map((month) => {
                           const iliStyles = getAccidentalidadIliStatusStyles(month.status);
                           const maxIli = Math.max(...accidentalidadIliMetaComparison.map((row) => row.ili), 0.000001);
                           const barHeight = getScaledBarHeight(month.ili, maxIli);
+                          const barColor =
+                            month.status === 'ok' ? '#006b3d' : month.status === 'warn' ? '#ffd000' : '#ba1a1a';
                           return (
                             <div key={`acc-db-ili-${month.label}`} className="min-w-[88px] w-[88px] flex flex-col items-center">
-                              <div className="h-32 w-full flex flex-col justify-end items-center">
-                                <div className="text-[10px] font-mono text-gray-700 mb-1 shrink-0 leading-none">
-                                  {month.ili.toFixed(4)}
-                                </div>
-                                <div
-                                  className="rounded-t-sm w-[52px] shrink-0"
-                                  style={{
-                                    height: `${barHeight}%`,
-                                    minHeight: '6px',
-                                    backgroundColor:
-                                      month.status === 'ok'
-                                        ? '#006b3d'
-                                        : month.status === 'warn'
-                                          ? '#ffd000'
-                                          : '#ba1a1a'
-                                  }}
-                                />
-                              </div>
+                              {renderSgiVerticalBar(
+                                month.ili.toFixed(4),
+                                barHeight,
+                                barColor,
+                                {
+                                  barWidthClass: 'w-[52px]',
+                                  title: `${month.label}: ILI ${month.ili.toFixed(6)}`
+                                }
+                              )}
                               <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
                               <span className={`mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold border ${iliStyles.bg} ${iliStyles.text} ${iliStyles.border}`}>
                                 {iliStyles.label}
