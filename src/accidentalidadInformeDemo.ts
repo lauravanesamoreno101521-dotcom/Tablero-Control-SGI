@@ -158,24 +158,72 @@ const matchRoadLeveDriver = (label: string) =>
 const matchRoadLeveOther = (label: string) =>
   label.includes('siniestros viales leve') && label.includes('otro actor');
 
+export type AccidentalidadBdEventsFilter = {
+  yearFilter: string;
+  startDate: string;
+  endDate: string;
+};
+
+const parseAccidentalidadReportDate = (record: AccidentalidadRecord): Date | null => {
+  if (!record.reportDate) return null;
+  const reportDate = new Date(`${record.reportDate}T00:00:00`);
+  return Number.isNaN(reportDate.getTime()) ? null : reportDate;
+};
+
+export const countAccidentalidadBdEventsByReportDate = (
+  records: AccidentalidadRecord[],
+  informeYear: number,
+  monthIndex: number | null,
+  filter: AccidentalidadBdEventsFilter
+): number => {
+  const start = filter.startDate ? new Date(`${filter.startDate}T00:00:00`) : null;
+  const end = filter.endDate ? new Date(`${filter.endDate}T23:59:59`) : null;
+  const explicitYear = filter.yearFilter ? Number(filter.yearFilter) : null;
+  const yearToMatch = explicitYear ?? informeYear;
+
+  return records.filter((row) => {
+    const reportDate = parseAccidentalidadReportDate(row);
+    if (!reportDate) {
+      return !start && !end && !explicitYear;
+    }
+    if (reportDate.getFullYear() !== yearToMatch) return false;
+    if (monthIndex !== null && reportDate.getMonth() !== monthIndex) return false;
+    if (start && reportDate < start) return false;
+    if (end && reportDate > end) return false;
+    return true;
+  }).length;
+};
+
+const countAccidentalidadBdEventsByReportMonth = (
+  records: AccidentalidadRecord[],
+  year: number,
+  month: number
+): number =>
+  records.filter((row) => {
+    const reportDate = parseAccidentalidadReportDate(row);
+    if (!reportDate) return false;
+    return reportDate.getFullYear() === year && reportDate.getMonth() + 1 === month;
+  }).length;
+
 export const buildAccidentalidadIndicators = (
   rows: unknown[][],
   bdRecords: AccidentalidadRecord[],
   year: number,
-  monthIndex: number | null = null
+  monthIndex: number | null = null,
+  allBdRecords: AccidentalidadRecord[] = bdRecords,
+  bdEventsFilter: AccidentalidadBdEventsFilter = { yearFilter: '', startDate: '', endDate: '' }
 ): AccidentalidadIndicators => {
-  const monthFilter = (record: AccidentalidadRecord) => {
-    if (record.year !== year) return false;
-    if (monthIndex === null) return true;
-    return record.month === monthIndex + 1;
-  };
-
-  const filteredBd = bdRecords.filter(monthFilter);
+  const totalEventsBd = countAccidentalidadBdEventsByReportDate(
+    allBdRecords,
+    year,
+    monthIndex,
+    bdEventsFilter
+  );
 
   return {
     sourceYear: year,
     hasInforme: rows.length > 0,
-    totalEventsBd: filteredBd.length,
+    totalEventsBd,
     laborIncidents: getInformeMetric(rows, (label) => label.startsWith('01-incidentes laborales'), monthIndex),
     disablingAccidents: getInformeMetric(rows, (label) => label.startsWith('02-accidentes incapacitantes'), monthIndex),
     nonDisablingAccidents: getInformeMetric(rows, (label) => label.startsWith('03-accidentes sin incapacidad'), monthIndex),
@@ -269,7 +317,7 @@ export const buildAccidentalidadMonthlyTrend = (
     disablingAccidents: toNumberOrZero(disablingRow?.[index + 1]),
     nonDisablingAccidents: toNumberOrZero(nonDisablingRow?.[index + 1]),
     laborRoadAccidents: toNumberOrZero(roadLaborRow?.[index + 1]),
-    bdEvents: bdRecords.filter((record) => record.year === year && record.month === index + 1).length
+    bdEvents: countAccidentalidadBdEventsByReportMonth(bdRecords, year, index + 1)
   }));
 };
 

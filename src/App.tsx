@@ -2086,18 +2086,33 @@ export default function App() {
   const accidentalidadIndicators = useMemo(() => {
     const year = accidentalidadInformeYear ?? ACCIDENTALIDAD_INFORME_YEARS[0] ?? 2026;
     const rows = getAccidentalidadInformeRows(accidentalidadInformeByYear, year);
-    return buildAccidentalidadIndicators(rows, accidentalidadFilteredRecords, year, accidentalidadSelectedMonthIndex);
+    return buildAccidentalidadIndicators(
+      rows,
+      accidentalidadFilteredRecords,
+      year,
+      accidentalidadSelectedMonthIndex,
+      accidentalidadRecords,
+      {
+        yearFilter: accidentalidadYearFilter,
+        startDate: sgiStartDate,
+        endDate: sgiEndDate
+      }
+    );
   }, [
     accidentalidadInformeYear,
     accidentalidadFilteredRecords,
+    accidentalidadRecords,
+    accidentalidadYearFilter,
+    sgiStartDate,
+    sgiEndDate,
     accidentalidadSelectedMonthIndex
   ]);
 
   const accidentalidadMonthlyTrend = useMemo(() => {
     const year = accidentalidadInformeYear ?? ACCIDENTALIDAD_INFORME_YEARS[0] ?? 2026;
     const rows = getAccidentalidadInformeRows(accidentalidadInformeByYear, year);
-    return buildAccidentalidadMonthlyTrend(rows, accidentalidadFilteredRecords, year);
-  }, [accidentalidadInformeYear, accidentalidadFilteredRecords]);
+    return buildAccidentalidadMonthlyTrend(rows, accidentalidadRecords, year);
+  }, [accidentalidadInformeYear, accidentalidadRecords]);
 
   const accidentalidadCharacteristicStats = useMemo(
     () => groupAccidentalidadRecords(accidentalidadFilteredRecords, (row) => row.characteristic || 'Sin característica'),
