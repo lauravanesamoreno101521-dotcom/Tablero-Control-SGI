@@ -1,5 +1,5 @@
 import { getSupabaseClient, getSupabaseSetupMessage, isSupabaseConfigured } from './client.ts';
-import type { SgiAppRole, SgiAppUser } from './auth.ts';
+import { SGI_BOOTSTRAP_ADMIN_EMAIL, type SgiAppRole, type SgiAppUser } from './auth.ts';
 
 export type SgiAssignableRole = 'viewer' | 'editor';
 
@@ -54,8 +54,32 @@ async function getAuthenticatedSupabaseClient() {
   return { supabase, error: null as null };
 }
 
+async function syncAuthUsersForAdmin(supabase: NonNullable<ReturnType<typeof getSupabaseClient>>): Promise<{
+  syncedCount: number;
+  syncWarning: string | null;
+}> {
+  const { data: syncData, error: syncError } = await supabase.rpc('admin_sync_auth_users_to_sgi');
+
+  if (syncError) {
+    const missingFunction =
+      syncError.message.includes('admin_sync_auth_users_to_sgi') ||
+      syncError.message.includes('Could not find the function');
+    return {
+      syncedCount: 0,
+      syncWarning: missingFunction
+        ? 'La sincronización automática aún no está instalada en Supabase. Ejecuta scripts/sync-auth-users-to-sgi.sql en el SQL Editor, o activa el acceso manualmente con el formulario inferior.'
+        : syncError.message
+    };
+  }
+
+  return {
+    syncedCount: typeof syncData === 'number' ? syncData : 0,
+    syncWarning: null
+  };
+}
+
 export async function listSgiAppUsersForAdmin(): Promise<
-  | { ok: true; users: SgiAppUserAdminRow[]; syncedCount: number }
+  | { ok: true; users: SgiAppUserAdminRow[]; syncedCount: number; syncWarning: string | null }
   | { ok: false; error: string }
 > {
   const { supabase, error: clientError } = await getAuthenticatedSupabaseClient();
@@ -63,11 +87,7 @@ export async function listSgiAppUsersForAdmin(): Promise<
     return { ok: false, error: clientError || getSupabaseSetupMessage() };
   }
 
-  let syncedCount = 0;
-  const { data: syncData, error: syncError } = await supabase.rpc('admin_sync_auth_users_to_sgi');
-  if (!syncError && typeof syncData === 'number') {
-    syncedCount = syncData;
-  }
+  const { syncedCount, syncWarning } = await syncAuthUsersForAdmin(supabase);
 
   const { data, error } = await supabase
     .from('sgi_app_users')
@@ -83,7 +103,52 @@ export async function listSgiAppUsersForAdmin(): Promise<
     };
   }
 
-  return { ok: true, users: (data as AppUserRow[]).map(mapAdminRow), syncedCount };
+  return {
+    ok: true,
+    users: (data as AppUserRow[]).map(mapAdminRow),
+    syncedCount,
+    syncWarning
+  };
+}
+
+export async function provisionSgiUserByEmailForAdmin(
+  email: string,
+  fullName?: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (!/^[^\s@]+@emprestur\.com$/i.test(normalizedEmail)) {
+    return { ok: false, error: 'Solo se permiten correos @emprestur.com.' };
+  }
+
+  if (normalizedEmail === SGI_BOOTSTRAP_ADMIN_EMAIL) {
+    return { ok: false, error: 'La cuenta de administrador principal ya existe.' };
+  }
+
+  const { supabase, error: clientError } = await getAuthenticatedSupabaseClient();
+  if (!supabase || clientError) {
+    return { ok: false, error: clientError || getSupabaseSetupMessage() };
+  }
+
+  const displayName = fullName?.trim() || normalizedEmail.split('@')[0] || normalizedEmail;
+  const { error } = await supabase.from('sgi_app_users').upsert(
+    {
+      email: normalizedEmail,
+      full_name: displayName,
+      role: 'viewer' as SgiAppRole,
+      is_active: true
+    },
+    { onConflict: 'email' }
+  );
+
+  if (error) {
+    return {
+      ok: false,
+      error: error.message || 'No se pudo activar el acceso para ese correo.'
+    };
+  }
+
+  return { ok: true };
 }
 
 export async function updateSgiAppUserRoleForAdmin(

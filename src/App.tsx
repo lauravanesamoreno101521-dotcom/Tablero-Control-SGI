@@ -658,6 +658,37 @@ const getGreenBarColor = (value: number, minValue: number, maxValue: number): st
 const getScaledBarHeight = (value: number, maxValue: number, minHeight = 6): number =>
   maxValue <= 0 ? minHeight : Math.max((value / maxValue) * 100, minHeight);
 
+const renderSstVerticalBar = (
+  valueLabel: string,
+  barHeightPercent: number,
+  barColor: string,
+  options?: { barWidthClass?: string; labelClassName?: string; title?: string; barAreaClass?: string }
+) => (
+  <div className="w-full flex flex-col items-center">
+    <div className="min-h-[1.5rem] w-full flex items-center justify-center shrink-0 px-0.5">
+      <span
+        className={
+          options?.labelClassName ??
+          'text-[10px] font-mono text-[#00502c] leading-none font-semibold whitespace-nowrap'
+        }
+      >
+        {valueLabel}
+      </span>
+    </div>
+    <div className={`h-40 w-full flex items-end justify-center ${options?.barAreaClass ?? ''}`}>
+      <div
+        className={`rounded-t-sm shrink-0 ${options?.barWidthClass ?? 'w-[54px]'}`}
+        style={{
+          height: `${barHeightPercent}%`,
+          minHeight: '6px',
+          backgroundColor: barColor
+        }}
+        title={options?.title}
+      />
+    </div>
+  </div>
+);
+
 const getAccidentalidadIliStatusStyles = (status: AccidentalidadIliStatus) => {
   if (status === 'ok') {
     return {
@@ -756,6 +787,9 @@ const resolveSingleMonthIndexFromDateRange = (startDate: string, endDate: string
 };
 
 const normalizeSgiTopicLabel = (topic: string): string => {
+  if (/pausas?\s*activas?/i.test(topic)) return 'Pausa Activa';
+  if (/inspecci[oó]n/i.test(topic)) return 'Inspecciones';
+  if (/pevs|pesv/i.test(topic)) return 'PEVS';
   if (/tamizaje/i.test(topic)) return 'Tamizajes';
   return topic;
 };
@@ -6085,7 +6119,7 @@ export default function App() {
                         const minRate = Math.min(...sstClientStats.map((item) => item.accompanimentRate));
 
                         return (
-                          <div className="overflow-x-auto py-1">
+                          <div className="overflow-x-auto overflow-y-visible py-2">
                             <div className="flex gap-4 justify-between min-w-max px-1">
                               {sstClientStats.map((row) => {
                                 const barColor = getGreenBarColor(row.accompanimentRate, minRate, maxRate);
@@ -6093,16 +6127,14 @@ export default function App() {
 
                                 return (
                                   <div key={row.client} className="min-w-[100px] w-[100px] flex flex-col items-center">
-                                    <div className="h-44 w-full flex flex-col justify-end items-center">
-                                      <div className="text-[10px] font-mono text-[#00502c] mb-1 shrink-0 leading-none">
-                                        {row.accompanimentRate.toFixed(1)}%
-                                      </div>
-                                      <div
-                                        className="rounded-t-sm w-[54px] shrink-0"
-                                        style={{ height: `${barHeight}%`, minHeight: '6px', backgroundColor: barColor }}
-                                        title={`${row.client}: cobertura ${row.accompanimentRate.toFixed(1)}%`}
-                                      />
-                                    </div>
+                                    {renderSstVerticalBar(
+                                      `${row.accompanimentRate.toFixed(1)}%`,
+                                      barHeight,
+                                      barColor,
+                                      {
+                                        title: `${row.client}: cobertura ${row.accompanimentRate.toFixed(1)}%`
+                                      }
+                                    )}
                                     <div className="mt-2 text-[11px] text-center text-gray-700 leading-tight line-clamp-2">
                                       {row.client}
                                     </div>
@@ -6151,7 +6183,7 @@ export default function App() {
                           No hay datos mensuales disponibles para graficar.
                         </div>
                       ) : (
-                        <div className="overflow-x-auto py-1">
+                        <div className="overflow-x-auto overflow-y-visible py-2">
                           <div className="flex gap-4 justify-between min-w-max px-1">
                             {sstMonthlyImpact.map((month) => {
                               const maxValue = Math.max(...sstMonthlyImpact.map((item) => item.impacted), 1);
@@ -6160,18 +6192,17 @@ export default function App() {
                               const barColor = getGreenBarColor(month.impacted, minValue, maxValue);
                               return (
                                 <div key={month.label} className="min-w-[88px] w-[88px] flex flex-col items-center">
-                                  <div className="h-44 w-full flex flex-col justify-end items-center">
-                                    <div className="text-[11px] font-mono text-gray-700 mb-1 shrink-0 leading-none">{month.impacted}</div>
-                                    <div
-                                      className="rounded-t-sm w-[58px] shrink-0"
-                                      style={{
-                                        height: `${barHeight}%`,
-                                        minHeight: '6px',
-                                        backgroundColor: barColor
-                                      }}
-                                      title={`${month.label.toUpperCase()}: ${month.impacted} personas (${month.visits} visitas)`}
-                                    />
-                                  </div>
+                                  {renderSstVerticalBar(
+                                    String(month.impacted),
+                                    barHeight,
+                                    barColor,
+                                    {
+                                      barWidthClass: 'w-[58px]',
+                                      labelClassName:
+                                        'text-[11px] font-mono text-gray-700 leading-none font-semibold whitespace-nowrap',
+                                      title: `${month.label.toUpperCase()}: ${month.impacted} personas (${month.visits} visitas)`
+                                    }
+                                  )}
                                   <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
                                   <div className="text-[11px] text-gray-500">{month.visits} visitas</div>
                                 </div>
