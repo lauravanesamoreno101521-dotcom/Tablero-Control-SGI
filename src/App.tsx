@@ -791,6 +791,7 @@ const normalizeSgiTopicLabel = (topic: string): string => {
   if (/pausas?\s*activas?/i.test(topic)) return 'Pausa Activa';
   if (/inspecci[oó]n/i.test(topic)) return 'Inspecciones';
   if (/pevs|pesv/i.test(topic)) return 'PEVS';
+  if (/peligros?\s*y\s*riesgos?/i.test(topic)) return 'Peligros y Riesgos';
   if (/tamizaje/i.test(topic)) return 'Tamizajes';
   return topic;
 };
