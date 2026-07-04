@@ -36,8 +36,13 @@ create or replace function public.current_sgi_email()
 returns text
 language sql
 stable
+security definer
+set search_path = public, auth
 as $$
-  select lower(coalesce(auth.jwt() ->> 'email', ''));
+  select lower(trim(coalesce(
+    nullif(auth.jwt() ->> 'email', ''),
+    (select email from auth.users where id = auth.uid())
+  , '')));
 $$;
 
 create or replace function public.is_active_sgi_user()
@@ -67,7 +72,7 @@ as $$
     from public.sgi_app_users u
     where lower(u.email) = public.current_sgi_email()
       and u.is_active = true
-      and u.role = 'admin'
+      and (u.role = 'admin' or lower(u.email) = 'admin@emprestur.com')
   );
 $$;
 
@@ -83,7 +88,10 @@ as $$
     from public.sgi_app_users u
     where lower(u.email) = public.current_sgi_email()
       and u.is_active = true
-      and u.role = 'admin'
+      and (
+        u.role in ('admin', 'editor')
+        or lower(u.email) = 'admin@emprestur.com'
+      )
   );
 $$;
 
@@ -99,12 +107,16 @@ begin
     new.id,
     lower(new.email),
     coalesce(new.raw_user_meta_data->>'full_name', split_part(lower(new.email), '@', 1)),
-    'viewer',
+    case when lower(new.email) = 'admin@emprestur.com' then 'admin' else 'viewer' end,
     true
   )
   on conflict (email) do update
   set auth_user_id = excluded.auth_user_id,
-      full_name = coalesce(public.sgi_app_users.full_name, excluded.full_name);
+      full_name = coalesce(public.sgi_app_users.full_name, excluded.full_name),
+      role = case
+        when lower(excluded.email) = 'admin@emprestur.com' then 'admin'
+        else public.sgi_app_users.role
+      end;
   return new;
 end;
 $$;
@@ -115,24 +127,42 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_sgi_user();
 
 -- Perfil SGI al iniciar sesión (evita bloqueo si el trigger no corrió o RLS impidió el insert desde el cliente)
-create or replace function public.ensure_my_sgi_profile(p_full_name text default null)
+drop function if exists public.ensure_my_sgi_profile(text);
+
+create or replace function public.ensure_my_sgi_profile(
+  p_full_name text default null,
+  p_email text default null
+)
 returns public.sgi_app_users
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, auth
 as $$
 declare
   uid uuid;
+  auth_email text;
   user_email text;
+  assigned_role text;
   existing public.sgi_app_users%rowtype;
   result public.sgi_app_users%rowtype;
 begin
   uid := auth.uid();
-  user_email := lower(trim(coalesce(auth.jwt() ->> 'email', '')));
-
-  if uid is null or user_email = '' then
+  if uid is null then
     return null;
   end if;
+
+  select lower(trim(email)) into auth_email from auth.users where id = uid;
+  user_email := lower(trim(coalesce(
+    nullif(auth.jwt() ->> 'email', ''),
+    auth_email,
+    nullif(trim(p_email), '')
+  , '')));
+
+  if user_email = '' or auth_email is null or user_email <> auth_email then
+    return null;
+  end if;
+
+  assigned_role := case when user_email = 'admin@emprestur.com' then 'admin' else 'viewer' end;
 
   select * into existing
   from public.sgi_app_users u
@@ -147,6 +177,7 @@ begin
     set
       last_login_at = now(),
       auth_user_id = coalesce(u.auth_user_id, uid),
+      role = case when user_email = 'admin@emprestur.com' then 'admin' else u.role end,
       full_name = coalesce(
         nullif(trim(u.full_name), ''),
         nullif(trim(p_full_name), ''),
@@ -163,7 +194,7 @@ begin
     uid,
     user_email,
     coalesce(nullif(trim(p_full_name), ''), split_part(user_email, '@', 1)),
-    'viewer',
+    assigned_role,
     true,
     now()
   )
@@ -173,8 +204,8 @@ begin
 end;
 $$;
 
-revoke all on function public.ensure_my_sgi_profile(text) from public;
-grant execute on function public.ensure_my_sgi_profile(text) to authenticated;
+revoke all on function public.ensure_my_sgi_profile(text, text) from public;
+grant execute on function public.ensure_my_sgi_profile(text, text) to authenticated;
 
 -- sgi_app_users policies
 drop policy if exists "sgi_users_select_own" on public.sgi_app_users;

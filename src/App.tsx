@@ -34,7 +34,8 @@ import {
   ArrowRight,
   ShieldCheck,
   Zap,
-  Leaf
+  Leaf,
+  Users
 } from 'lucide-react';
 import { Shipment, Driver, FleetVehicle, IncidentAlert, GpsPoint, OptimizedRoute, ShipmentStatus } from './types.ts';
 import { INITIAL_SHIPMENTS, INITIAL_DRIVERS, INITIAL_VEHICLES, INITIAL_ALERTS, COORDINATES_MAP } from './mockData.ts';
@@ -85,6 +86,7 @@ import {
   canEditSgiDatasets,
   getCurrentSgiAppUser,
   getSgiRoleLabel,
+  isSgiAdmin,
   registerSgiUser,
   signInSgiUser,
   signOutSgiUser,
@@ -92,6 +94,8 @@ import {
   type SgiAppUser
 } from './supabase/auth.ts';
 import SgiAuthScreen from './components/SgiAuthScreen.tsx';
+import SgiUserManagement from './components/SgiUserManagement.tsx';
+import { parseSgiRoute, sgiRouteToHash, type SgiAppRoute } from './sgiRoutes.ts';
 import {
   loadSgiDatasetsFromSupabase,
   persistSgiDatasetsToSupabase,
@@ -825,6 +829,9 @@ export default function App() {
   const [registerError, setRegisterError] = useState('');
   const [registeredUserEmail, setRegisteredUserEmail] = useState('');
   const [sgiAppUserRole, setSgiAppUserRole] = useState<SgiAppRole | null>(null);
+  const [sgiRoute, setSgiRoute] = useState<SgiAppRoute>(() =>
+    typeof window !== 'undefined' ? parseSgiRoute(window.location.hash) : 'dashboard'
+  );
   const [isDbTestConnected, setIsDbTestConnected] = useState(false);
   const [showDbDetailPanel, setShowDbDetailPanel] = useState(false);
   const [isDemoExcelLoading, setIsDemoExcelLoading] = useState(false);
@@ -1300,7 +1307,7 @@ export default function App() {
     setRegisteredUserEmail(appUser.email);
     setSgiAppUserRole(appUser.role);
     setIsDbTestConnected(true);
-    setShowDbDetailPanel(canEditSgiDatasets(appUser.role));
+    setShowDbDetailPanel(canEditSgiDatasets(appUser.role, appUser.email));
     supabaseSyncReadyRef.current = true;
     return { ok: true };
   };
@@ -1372,7 +1379,7 @@ export default function App() {
       !registeredUserEmail ||
       !supabaseSyncReadyRef.current ||
       !sgiAppUserRole ||
-      !canEditSgiDatasets(sgiAppUserRole)
+      !canEditSgiDatasets(sgiAppUserRole, registeredUserEmail)
     ) {
       return;
     }
@@ -1411,8 +1418,45 @@ export default function App() {
   const sgiCanEditDatasets = useMemo(() => {
     if (!isDbTestConnected) return false;
     if (!isSupabaseConfigured()) return true;
-    return sgiAppUserRole ? canEditSgiDatasets(sgiAppUserRole) : false;
-  }, [isDbTestConnected, sgiAppUserRole]);
+    return sgiAppUserRole
+      ? canEditSgiDatasets(sgiAppUserRole, registeredUserEmail ?? undefined)
+      : false;
+  }, [isDbTestConnected, sgiAppUserRole, registeredUserEmail]);
+
+  const sgiIsAdmin = useMemo(
+    () =>
+      Boolean(
+        sgiAppUserRole &&
+          registeredUserEmail &&
+          isSgiAdmin(sgiAppUserRole, registeredUserEmail)
+      ),
+    [sgiAppUserRole, registeredUserEmail]
+  );
+
+  const navigateSgiRoute = (route: SgiAppRoute) => {
+    const hash = sgiRouteToHash(route);
+    if (window.location.hash !== hash) {
+      window.location.hash = hash;
+    }
+    setSgiRoute(route);
+  };
+
+  useEffect(() => {
+    const syncRouteFromHash = () => {
+      setSgiRoute(parseSgiRoute(window.location.hash));
+    };
+
+    syncRouteFromHash();
+    window.addEventListener('hashchange', syncRouteFromHash);
+    return () => window.removeEventListener('hashchange', syncRouteFromHash);
+  }, []);
+
+  useEffect(() => {
+    if (sgiRoute === 'admin-users' && isDbTestConnected && !sgiIsAdmin) {
+      navigateSgiRoute('dashboard');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sgiRoute, isDbTestConnected, sgiIsAdmin]);
 
   const unsafeFilteredRecords = useMemo(() => {
     const selectedYear = Number(unsafeYearFilter);
@@ -4360,6 +4404,7 @@ export default function App() {
                 setShowDbDetailPanel(false);
                 setRegisteredUserEmail('');
                 setSgiAppUserRole(null);
+                setSgiRoute('dashboard');
                 setRegisterEmail('');
                 setLoginPassword('');
                 setConfirmPassword('');
@@ -4368,6 +4413,7 @@ export default function App() {
                 setAuthMode('login');
                 localStorage.removeItem(SGI_SESSION_EMAIL_KEY);
                 supabaseSyncReadyRef.current = false;
+                window.location.hash = '#/';
                 void signOutSgiUser();
               }}
               className="bg-[#ffd000] text-[#00502c] hover:bg-[#f5c400] px-3.5 py-1.5 rounded-soft border border-[#ffe786] text-[11px] font-bold uppercase tracking-wider transition-colors"
@@ -4376,13 +4422,20 @@ export default function App() {
             </button>
             {registeredUserEmail && sgiAppUserRole && (
               <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-soft border border-emerald-300 text-[10px] font-bold uppercase tracking-wider">
-                {registeredUserEmail} · {getSgiRoleLabel(sgiAppUserRole)}
+                {registeredUserEmail} · {getSgiRoleLabel(sgiAppUserRole, registeredUserEmail)}
               </span>
             )}
           </div>
         </div>
       </header>
 
+      {sgiRoute === 'admin-users' && sgiIsAdmin ? (
+        <SgiUserManagement
+          currentUserEmail={registeredUserEmail ?? ''}
+          onNavigateDashboard={() => navigateSgiRoute('dashboard')}
+        />
+      ) : (
+      <>
       <div
         className={`fixed left-0 top-[68px] z-40 transition-transform duration-300 ${
           isGsiMenuOpen ? 'translate-x-0' : '-translate-x-[calc(100%-96px)]'
@@ -5660,6 +5713,24 @@ export default function App() {
         {/* TAB 4: ACOMPAÑAMIENTO PRESENCIAL (SGI) */}
         {activeTab === 'sgi' && (
           <div className="space-y-5">
+            {sgiIsAdmin && (
+              <div className="bg-white border border-[#eaecf0] rounded-soft p-4 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-[#00502c]">Administración del tablero</p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Gestiona roles de visualizador y editor para los usuarios registrados.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigateSgiRoute('admin-users')}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-soft text-sm font-semibold border border-[#00502c] bg-[#00502c] text-white hover:bg-[#006b3d] transition-colors"
+                >
+                  <Users size={16} />
+                  Gestión de usuarios
+                </button>
+              </div>
+            )}
             <div className="bg-white border border-[#eaecf0] rounded-soft p-4 shadow-sm space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -8922,6 +8993,8 @@ export default function App() {
         )}
 
       </main>
+      </>
+      )}
 
       {/* 5. Footer institucional */}
       <footer className="bg-white border-t border-[#eaecf0] py-4 text-xs text-gray-500 font-mono mt-8">

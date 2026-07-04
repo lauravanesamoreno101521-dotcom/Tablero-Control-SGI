@@ -9,14 +9,21 @@
 -- where email = 'admin@emprestur.com';
 
 -- ---------------------------------------------------------------------------
--- 2) ALTA MANUAL (si el usuario existe en Authentication pero no entra)
+-- 2) ASIGNAR ROL EDITOR (edita bases de datos e informes)
+-- ---------------------------------------------------------------------------
+-- update public.sgi_app_users
+-- set role = 'editor', is_active = true
+-- where email = 'usuario@emprestur.com';
+
+-- ---------------------------------------------------------------------------
+-- 3) ALTA MANUAL (si el usuario existe en Authentication pero no entra)
 -- ---------------------------------------------------------------------------
 -- insert into public.sgi_app_users (auth_user_id, email, full_name, role, is_active)
 -- values (
 --   'AUTH_USER_UUID',          -- Authentication → Users → copiar UUID
 --   'nombre@emprestur.com',
 --   'Nombre completo',
---   'viewer',                  -- viewer = Visualizador | admin = Administrador
+--   'viewer',                  -- viewer = Visualizador | editor = Editor | admin = Administrador
 --   true
 -- )
 -- on conflict (email) do update
@@ -26,7 +33,7 @@
 --     is_active = excluded.is_active;
 
 -- ---------------------------------------------------------------------------
--- 3) ADMINISTRADOR: activar, desactivar o cambiar rol
+-- 4) ADMINISTRADOR: activar, desactivar o cambiar rol
 -- ---------------------------------------------------------------------------
 -- Activar usuario:
 -- update public.sgi_app_users set is_active = true where email = 'usuario@emprestur.com';
@@ -37,11 +44,14 @@
 -- Hacer administrador (edita bases de datos):
 -- update public.sgi_app_users set role = 'admin' where email = 'usuario@emprestur.com';
 
+-- Hacer editor (edita bases de datos):
+-- update public.sgi_app_users set role = 'editor' where email = 'usuario@emprestur.com';
+
 -- Volver a visualizador (solo lectura):
 -- update public.sgi_app_users set role = 'viewer' where email = 'usuario@emprestur.com';
 
 -- ---------------------------------------------------------------------------
--- 4) VER USUARIOS REGISTRADOS
+-- 5) VER USUARIOS REGISTRADOS
 -- ---------------------------------------------------------------------------
 -- select email, full_name, role, is_active, last_login_at
 -- from public.sgi_app_users

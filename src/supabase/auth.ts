@@ -37,25 +37,69 @@ const inactiveMessage =
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export const getSgiRoleLabel = (role: SgiAppRole): string => {
-  if (role === 'admin') return 'Administrador';
+export const SGI_BOOTSTRAP_ADMIN_EMAIL = 'admin@emprestur.com';
+
+export const resolveEffectiveSgiRole = (email: string, role: SgiAppRole): SgiAppRole => {
+  if (email.trim().toLowerCase() === SGI_BOOTSTRAP_ADMIN_EMAIL) return 'admin';
+  return role;
+};
+
+export const getSgiRoleLabel = (role: SgiAppRole, email?: string): string => {
+  const effectiveRole = email ? resolveEffectiveSgiRole(email, role) : role;
+  if (effectiveRole === 'admin') return 'Administrador';
+  if (effectiveRole === 'editor') return 'Editor';
   return 'Visualizador';
 };
 
-export const canEditSgiDatasets = (role: SgiAppRole): boolean => role === 'admin';
+export const canEditSgiDatasets = (role: SgiAppRole, email?: string): boolean => {
+  const effectiveRole = email ? resolveEffectiveSgiRole(email, role) : role;
+  return effectiveRole === 'admin' || effectiveRole === 'editor';
+};
 
-async function fetchProfileViaRpc(fullName?: string): Promise<SgiAppUser | null> {
+export const isSgiAdmin = (role: SgiAppRole, email?: string): boolean => {
+  if (email) return resolveEffectiveSgiRole(email, role) === 'admin';
+  return role === 'admin';
+};
+
+async function promoteBootstrapAdminIfNeeded(user: SgiAppUser): Promise<SgiAppUser> {
+  const effectiveRole = resolveEffectiveSgiRole(user.email, user.role);
+  if (effectiveRole === user.role) return user;
+
+  const supabase = getSupabaseClient();
+  if (!supabase) return { ...user, role: effectiveRole };
+
+  const { data, error } = await supabase
+    .from('sgi_app_users')
+    .update({ role: 'admin' })
+    .eq('id', user.id)
+    .select('id, auth_user_id, email, full_name, role, is_active')
+    .maybeSingle();
+
+  if (!error && data) {
+    return mapAppUser(data as AppUserRow);
+  }
+
+  return { ...user, role: effectiveRole };
+};
+
+async function finalizeAppUser(user: SgiAppUser): Promise<SgiAppUser> {
+  return promoteBootstrapAdminIfNeeded(user);
+}
+
+async function fetchProfileViaRpc(
+  email: string,
+  fullName?: string
+): Promise<SgiAppUser | null> {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
   const { data, error } = await supabase.rpc('ensure_my_sgi_profile', {
-    p_full_name: fullName?.trim() || null
+    p_full_name: fullName?.trim() || null,
+    p_email: email
   });
 
   if (error) {
-    if (!error.message.includes('ensure_my_sgi_profile')) {
-      console.error('ensure_my_sgi_profile:', error.message);
-    }
+    console.error('ensure_my_sgi_profile:', error.message);
     return null;
   }
 
@@ -123,11 +167,11 @@ async function resolveAuthorizedAppUser(
   fullName?: string
 ): Promise<{ user: SgiAppUser | null; inactive: boolean }> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const rpcProfile = await fetchProfileViaRpc(fullName);
-    if (rpcProfile) return { user: rpcProfile, inactive: false };
+    const rpcProfile = await fetchProfileViaRpc(email, fullName);
+    if (rpcProfile) return { user: await finalizeAppUser(rpcProfile), inactive: false };
 
     const tableProfile = await fetchProfileViaTable(authUserId, email, fullName);
-    if (tableProfile) return { user: tableProfile, inactive: false };
+    if (tableProfile) return { user: await finalizeAppUser(tableProfile), inactive: false };
 
     const supabase = getSupabaseClient();
     if (supabase) {
