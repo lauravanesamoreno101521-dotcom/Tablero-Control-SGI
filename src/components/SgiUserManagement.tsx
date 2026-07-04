@@ -57,6 +57,11 @@ export default function SgiUserManagement({
       setUsers([]);
     } else {
       setUsers(result.users);
+      if (result.syncedCount > 0) {
+        setStatusMessage(
+          `Se importaron ${result.syncedCount} usuario(s) registrado(s) en Authentication. Ya pueden iniciar sesión.`
+        );
+      }
     }
     setLoading(false);
   }, [usesSupabaseAuth]);
@@ -128,7 +133,8 @@ export default function SgiUserManagement({
           </h2>
           <p className="text-sm text-gray-600 mt-1">
             Asigna roles de <strong>Visualizador</strong> (solo consulta) o <strong>Editor</strong>{' '}
-            (edita bases de datos e informes). Los nuevos registros entran como visualizadores.
+            (edita bases de datos e informes). Al abrir o actualizar, se importan automáticamente
+            los correos ya registrados en Authentication.
           </p>
         </div>
 

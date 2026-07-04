@@ -55,11 +55,18 @@ async function getAuthenticatedSupabaseClient() {
 }
 
 export async function listSgiAppUsersForAdmin(): Promise<
-  { ok: true; users: SgiAppUserAdminRow[] } | { ok: false; error: string }
+  | { ok: true; users: SgiAppUserAdminRow[]; syncedCount: number }
+  | { ok: false; error: string }
 > {
   const { supabase, error: clientError } = await getAuthenticatedSupabaseClient();
   if (!supabase || clientError) {
     return { ok: false, error: clientError || getSupabaseSetupMessage() };
+  }
+
+  let syncedCount = 0;
+  const { data: syncData, error: syncError } = await supabase.rpc('admin_sync_auth_users_to_sgi');
+  if (!syncError && typeof syncData === 'number') {
+    syncedCount = syncData;
   }
 
   const { data, error } = await supabase
@@ -76,7 +83,7 @@ export async function listSgiAppUsersForAdmin(): Promise<
     };
   }
 
-  return { ok: true, users: (data as AppUserRow[]).map(mapAdminRow) };
+  return { ok: true, users: (data as AppUserRow[]).map(mapAdminRow), syncedCount };
 }
 
 export async function updateSgiAppUserRoleForAdmin(

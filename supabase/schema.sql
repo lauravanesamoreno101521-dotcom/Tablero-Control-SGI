@@ -207,6 +207,47 @@ $$;
 revoke all on function public.ensure_my_sgi_profile(text, text) from public;
 grant execute on function public.ensure_my_sgi_profile(text, text) to authenticated;
 
+-- Sincroniza cuentas de Authentication que aún no tienen fila en sgi_app_users (solo admin)
+create or replace function public.admin_sync_auth_users_to_sgi()
+returns integer
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  synced_count integer;
+begin
+  if not public.is_sgi_admin() then
+    raise exception 'Acceso denegado';
+  end if;
+
+  with inserted as (
+    insert into public.sgi_app_users (auth_user_id, email, full_name, role, is_active, last_login_at)
+    select
+      u.id,
+      lower(trim(u.email)),
+      coalesce(u.raw_user_meta_data->>'full_name', split_part(lower(trim(u.email)), '@', 1)),
+      case when lower(trim(u.email)) = 'admin@emprestur.com' then 'admin' else 'viewer' end,
+      true,
+      now()
+    from auth.users u
+    where lower(trim(u.email)) like '%@emprestur.com'
+      and not exists (
+        select 1 from public.sgi_app_users s where lower(s.email) = lower(trim(u.email))
+      )
+    on conflict (email) do update
+    set auth_user_id = coalesce(public.sgi_app_users.auth_user_id, excluded.auth_user_id)
+    returning 1
+  )
+  select count(*) into synced_count from inserted;
+
+  return coalesce(synced_count, 0);
+end;
+$$;
+
+revoke all on function public.admin_sync_auth_users_to_sgi() from public;
+grant execute on function public.admin_sync_auth_users_to_sgi() to authenticated;
+
 -- sgi_app_users policies
 drop policy if exists "sgi_users_select_own" on public.sgi_app_users;
 drop policy if exists "sgi_users_select_admin" on public.sgi_app_users;

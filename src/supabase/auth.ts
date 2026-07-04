@@ -30,7 +30,7 @@ const mapAppUser = (row: AppUserRow): SgiAppUser => ({
 });
 
 const unauthorizedMessage =
-  'Usuario no autorizado. Solicite acceso al administrador del tablero SGI.';
+  'Usuario no autorizado. Su correo está registrado pero falta activar el perfil SGI. Pida al administrador que abra Gestión de usuarios y pulse Actualizar.';
 
 const inactiveMessage =
   'Su cuenta está desactivada. Solicite acceso al administrador del tablero SGI.';
