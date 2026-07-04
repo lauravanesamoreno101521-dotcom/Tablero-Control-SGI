@@ -51,6 +51,7 @@ import {
   formatInformeCellValue,
   INCAP_INFORME_MONTH_LABELS,
   parseInformeInputsFromRows,
+  parseIncapIndicatorsFromInformeRows,
   resolveIncapEmployeesMonthly,
   type IncapInformeEditableField,
   type IncapInformeManualBdEdits,
@@ -1570,70 +1571,39 @@ export default function App() {
   }, [isDbTestConnected, incapInformeYear, incapDemoInformeInputs, incapRecords, incapDemoInformeEdits]);
 
   const incapIndicatorsFromInforme = useMemo(() => {
-    if (incapDemoInformeComputed) {
-      const indicators = incapDemoInformeComputed.indicators;
-      return {
-        sourceYear: incapInformeYear,
-        hasInforme: true,
-        employees: indicators.employees,
-        hhtt: indicators.hhtt,
-        scheduledDays: indicators.scheduledDays,
-        egDays: indicators.egDays,
-        egPeople: indicators.egPeople,
-        atDays: indicators.atDays,
-        atPeople: indicators.atPeople,
-        elLaborDays: indicators.elIncapacityDays,
-        elPrevalence: indicators.elPrevalence,
-        elSeverity: indicators.elSeverity,
-        elIncidence: indicators.elIncidence,
-        elIncapacityDays: indicators.elIncapacityDays,
-        globalRate: indicators.globalRate,
-        egAcGlobalRate: indicators.egAcGlobalRate,
-        frequency: indicators.frequency,
-        severity: indicators.severity,
-        generalIndex: indicators.generalIndex,
-        medicalCause: indicators.medicalCause,
-        egAcMortalityRate: indicators.egAcMortalityRate
-      };
+    const rows = incapInformeYear ? getIncapInformeRows(incapInformeYear) : [];
+    const fromInforme = parseIncapIndicatorsFromInformeRows(rows, incapInformeYear);
+    const latestInformeYear = INCAP_INFORME_YEARS[0] ?? 2026;
+    const useLiveComputedIndicators =
+      Boolean(incapDemoInformeComputed) && incapInformeYear === latestInformeYear;
+
+    if (!useLiveComputedIndicators || !incapDemoInformeComputed) {
+      return fromInforme;
     }
 
-    const rows = incapInformeYear ? getIncapInformeRows(incapInformeYear) : [];
-    const pickTotal = (labelContains: string): number => {
-      const row = rows.find((row) => {
-        if (!Array.isArray(row)) return false;
-        return normalizeText(String(row[0] ?? '')).includes(normalizeText(labelContains));
-      }) as unknown[] | undefined;
-      if (!row) return 0;
-      return toNumberOrZero(row[13]);
-    };
-    const pickInformeExcelRowTotal = (excelRowNumber: number): number => {
-      const row = rows[excelRowNumber - 1];
-      if (!Array.isArray(row)) return 0;
-      return toNumberOrZero(row[13]);
-    };
-
+    const indicators = incapDemoInformeComputed.indicators;
     return {
-      sourceYear: incapInformeYear,
-      hasInforme: Boolean(incapInformeYear && rows.length > 0),
-      employees: pickTotal('No. de Empleados'),
-      hhtt: pickTotal('Horas Hombre Trabajadas Totales'),
-      scheduledDays: pickTotal('No. De días progamados de trabajo'),
-      egDays: pickTotal('Total de días de Incapacidad EG - AC'),
-      egPeople: pickTotal('Número de Personal Incapacitado en el periodo por Incapacidad Común'),
-      atDays: pickTotal('Total de días de Incapacidad AT'),
-      atPeople: pickTotal('Número de Personal Incapacitado en el periodo por Incapacidad laboral'),
-      elLaborDays: pickInformeExcelRowTotal(14),
-      elPrevalence: pickTotal('Prevalencia por Enfermedad Laboral'),
-      elSeverity: pickTotal('Severidad por Enfermedad Laboral'),
-      elIncidence: pickTotal('Incidencia por Enfermedad Laboral'),
-      elIncapacityDays: pickTotal('Total de días de incapacidad de Enfermedad Laboral'),
-      globalRate: pickTotal('Tasa Global de ausentismo (EG+AC+AT+EL)'),
-      egAcGlobalRate: pickInformeExcelRowTotal(16),
-      frequency: pickTotal('Indice de Frecuencia Ausentismo'),
-      severity: pickTotal('Indice de Severidad Ausentismo'),
-      generalIndex: pickTotal('Indice de General de Ausentismo'),
-      medicalCause: pickTotal('Ausentismo por Cauda medica'),
-      egAcMortalityRate: pickInformeExcelRowTotal(20)
+      ...fromInforme,
+      hasInforme: true,
+      employees: indicators.employees,
+      hhtt: indicators.hhtt,
+      scheduledDays: indicators.scheduledDays,
+      egDays: indicators.egDays,
+      egPeople: indicators.egPeople,
+      atDays: indicators.atDays,
+      atPeople: indicators.atPeople,
+      elLaborDays: indicators.elIncapacityDays,
+      elPrevalence: indicators.elPrevalence,
+      elSeverity: indicators.elSeverity,
+      elIncidence: indicators.elIncidence,
+      elIncapacityDays: indicators.elIncapacityDays,
+      globalRate: indicators.globalRate,
+      egAcGlobalRate: indicators.egAcGlobalRate,
+      frequency: indicators.frequency,
+      severity: indicators.severity,
+      generalIndex: indicators.generalIndex,
+      medicalCause: indicators.medicalCause,
+      egAcMortalityRate: indicators.egAcMortalityRate
     };
   }, [incapInformeYear, incapDemoInformeComputed]);
 
@@ -6812,23 +6782,48 @@ export default function App() {
                       <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
                         <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Tendencia mensual</p>
                         <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
-                          <div className="h-64 flex items-end gap-3 justify-between overflow-x-auto">
-                            {unsafeMonthlyTrend.map((month) => {
-                              const maxValue = Math.max(...unsafeMonthlyTrend.map((item) => item.total), 1);
-                              const totalHeight = (month.total / maxValue) * 100;
-                              const closedHeight = (month.closed / maxValue) * 100;
-                              return (
-                                <div key={month.label} className="flex-1 min-w-[90px] flex flex-col items-center">
-                                  <div className="text-[10px] font-mono text-gray-700 mb-1">{month.total}</div>
-                                  <div className="h-44 w-full flex items-end justify-center gap-1">
-                                    <div className="rounded-t-sm bg-[#ba1a1a]" style={{ width: '22px', height: `${Math.max(totalHeight, 6)}%` }} />
-                                    <div className="rounded-t-sm bg-[#006b3d]" style={{ width: '22px', height: `${Math.max(closedHeight, 6)}%` }} />
+                          <div className="overflow-x-auto overflow-y-visible py-2">
+                            <div className="flex gap-3 justify-between min-w-max px-1">
+                              {unsafeMonthlyTrend.map((month) => {
+                                const maxValue = Math.max(...unsafeMonthlyTrend.map((item) => item.total), 1);
+                                const totalHeight = getScaledBarHeight(month.total, maxValue);
+                                const closedHeight = getScaledBarHeight(month.closed, maxValue);
+                                return (
+                                  <div key={month.label} className="min-w-[90px] flex flex-col items-center">
+                                    <div className="flex gap-1 w-full justify-center">
+                                      <div className="w-[28px]">
+                                        {renderSstVerticalBar(
+                                          String(month.total),
+                                          totalHeight,
+                                          '#ba1a1a',
+                                          {
+                                            barWidthClass: 'w-[22px]',
+                                            labelClassName:
+                                              'text-[10px] font-mono text-[#ba1a1a] leading-none font-semibold whitespace-nowrap',
+                                            title: `Reportados: ${month.total}`
+                                          }
+                                        )}
+                                      </div>
+                                      <div className="w-[28px]">
+                                        {renderSstVerticalBar(
+                                          String(month.closed),
+                                          closedHeight,
+                                          '#006b3d',
+                                          {
+                                            barWidthClass: 'w-[22px]',
+                                            labelClassName:
+                                              'text-[10px] font-mono text-[#006b3d] leading-none font-semibold whitespace-nowrap',
+                                            title: `Cerrados: ${month.closed}`
+                                          }
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
+                                    <div className="text-[11px] text-gray-500">Cierre {month.closedRate.toFixed(1)}%</div>
                                   </div>
-                                  <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
-                                  <div className="text-[11px] text-gray-500">Cierre {month.closedRate.toFixed(1)}%</div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
+                            </div>
                           </div>
                           <div className="mt-3 flex items-center gap-4 text-xs text-gray-600">
                             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#ba1a1a]" /> Reportados</span>

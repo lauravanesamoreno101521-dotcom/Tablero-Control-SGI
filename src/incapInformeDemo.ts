@@ -538,6 +538,55 @@ export const computeIncapInforme = (
   return { year, rows, indicators };
 };
 
+export type IncapInformeDashboardIndicators = IncapInformeComputed['indicators'] & {
+  sourceYear: number | null;
+  hasInforme: boolean;
+};
+
+/** Totales anuales del FT-GEI-SO-016 (columna Total) para el tablero por año. */
+export const parseIncapIndicatorsFromInformeRows = (
+  rows: unknown[][],
+  sourceYear: number | null
+): IncapInformeDashboardIndicators => {
+  const pickTotal = (labelContains: string): number => {
+    const row = rows.find((entry) => {
+      if (!Array.isArray(entry)) return false;
+      return normalizeText(String(entry[0] ?? '')).includes(normalizeText(labelContains));
+    }) as unknown[] | undefined;
+    if (!row) return 0;
+    return toNumberOrZero(row[13]);
+  };
+  const pickInformeExcelRowTotal = (excelRowNumber: number): number => {
+    const row = rows[excelRowNumber - 1];
+    if (!Array.isArray(row)) return 0;
+    return toNumberOrZero(row[13]);
+  };
+
+  return {
+    sourceYear,
+    hasInforme: Boolean(sourceYear && rows.length > 0),
+    employees: pickTotal('No. de Empleados'),
+    hhtt: pickTotal('Horas Hombre Trabajadas Totales'),
+    scheduledDays: pickTotal('No. De días progamados de trabajo'),
+    egDays: pickTotal('Total de días de Incapacidad EG - AC'),
+    egPeople: pickTotal('Número de Personal Incapacitado en el periodo por Incapacidad Común'),
+    atDays: pickTotal('Total de días de Incapacidad AT'),
+    atPeople: pickTotal('Número de Personal Incapacitado en el periodo por Incapacidad laboral'),
+    elLaborDays: pickInformeExcelRowTotal(14),
+    elPrevalence: pickTotal('Prevalencia por Enfermedad Laboral'),
+    elSeverity: pickTotal('Severidad por Enfermedad Laboral'),
+    elIncidence: pickTotal('Incidencia por Enfermedad Laboral'),
+    elIncapacityDays: pickTotal('Total de días de incapacidad de Enfermedad Laboral'),
+    globalRate: pickTotal('Tasa Global de ausentismo (EG+AC+AT+EL)'),
+    egAcGlobalRate: pickInformeExcelRowTotal(16),
+    frequency: pickTotal('Indice de Frecuencia Ausentismo'),
+    severity: pickTotal('Indice de Severidad Ausentismo'),
+    generalIndex: pickTotal('Indice de General de Ausentismo'),
+    medicalCause: pickTotal('Ausentismo por Cauda medica'),
+    egAcMortalityRate: pickInformeExcelRowTotal(20)
+  };
+};
+
 export const formatInformeCellValue = (rowKey: string, value: number): string => {
   if (!Number.isFinite(value)) return '0';
 
