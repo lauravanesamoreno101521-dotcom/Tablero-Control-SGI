@@ -1,4 +1,4 @@
-import { getSupabaseClient, isSupabaseConfigured } from './client.ts';
+import { getSupabaseClient, getSupabaseSetupMessage, isSupabaseConfigured } from './client.ts';
 import type { SgiAppRole, SgiAppUser } from './auth.ts';
 
 export type SgiAssignableRole = 'viewer' | 'editor';
@@ -30,15 +30,37 @@ const mapAdminRow = (row: AppUserRow): SgiAppUserAdminRow => ({
   lastLoginAt: row.last_login_at
 });
 
+async function getAuthenticatedSupabaseClient() {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return {
+      supabase: null as null,
+      error: getSupabaseSetupMessage()
+    };
+  }
+
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    return { supabase: null as null, error: error.message || 'No se pudo validar la sesión.' };
+  }
+
+  if (!data.session) {
+    return {
+      supabase: null as null,
+      error: 'No hay sesión activa. Cierra sesión e ingresa nuevamente con correo y contraseña.'
+    };
+  }
+
+  return { supabase, error: null as null };
+}
+
 export async function listSgiAppUsersForAdmin(): Promise<
   { ok: true; users: SgiAppUserAdminRow[] } | { ok: false; error: string }
 > {
-  if (!isSupabaseConfigured()) {
-    return { ok: false, error: 'Supabase no está configurado.' };
+  const { supabase, error: clientError } = await getAuthenticatedSupabaseClient();
+  if (!supabase || clientError) {
+    return { ok: false, error: clientError || getSupabaseSetupMessage() };
   }
-
-  const supabase = getSupabaseClient();
-  if (!supabase) return { ok: false, error: 'No se pudo conectar con Supabase.' };
 
   const { data, error } = await supabase
     .from('sgi_app_users')
@@ -46,7 +68,12 @@ export async function listSgiAppUsersForAdmin(): Promise<
     .order('created_at', { ascending: false });
 
   if (error) {
-    return { ok: false, error: error.message || 'No se pudo cargar la lista de usuarios.' };
+    return {
+      ok: false,
+      error:
+        error.message ||
+        'No se pudo cargar la lista de usuarios. Verifica que tu cuenta tenga rol administrador en Supabase.'
+    };
   }
 
   return { ok: true, users: (data as AppUserRow[]).map(mapAdminRow) };
@@ -56,8 +83,10 @@ export async function updateSgiAppUserRoleForAdmin(
   userId: string,
   role: SgiAssignableRole
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const supabase = getSupabaseClient();
-  if (!supabase) return { ok: false, error: 'No se pudo conectar con Supabase.' };
+  const { supabase, error: clientError } = await getAuthenticatedSupabaseClient();
+  if (!supabase || clientError) {
+    return { ok: false, error: clientError || getSupabaseSetupMessage() };
+  }
 
   const { error } = await supabase.from('sgi_app_users').update({ role }).eq('id', userId);
 
@@ -72,8 +101,10 @@ export async function updateSgiAppUserActiveForAdmin(
   userId: string,
   isActive: boolean
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const supabase = getSupabaseClient();
-  if (!supabase) return { ok: false, error: 'No se pudo conectar con Supabase.' };
+  const { supabase, error: clientError } = await getAuthenticatedSupabaseClient();
+  if (!supabase || clientError) {
+    return { ok: false, error: clientError || getSupabaseSetupMessage() };
+  }
 
   const { error } = await supabase.from('sgi_app_users').update({ is_active: isActive }).eq('id', userId);
 
@@ -83,3 +114,5 @@ export async function updateSgiAppUserActiveForAdmin(
 
   return { ok: true };
 }
+
+export { isSupabaseConfigured };

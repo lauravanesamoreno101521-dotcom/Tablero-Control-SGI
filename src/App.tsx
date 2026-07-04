@@ -1433,6 +1433,11 @@ export default function App() {
     [sgiAppUserRole, registeredUserEmail]
   );
 
+  const sgiCanManageUsers = useMemo(
+    () => sgiIsAdmin && isSupabaseConfigured(),
+    [sgiIsAdmin]
+  );
+
   const navigateSgiRoute = (route: SgiAppRoute) => {
     const hash = sgiRouteToHash(route);
     if (window.location.hash !== hash) {
@@ -1452,11 +1457,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (sgiRoute === 'admin-users' && isDbTestConnected && !sgiIsAdmin) {
+    if (sgiRoute === 'admin-users' && isDbTestConnected && !sgiCanManageUsers) {
       navigateSgiRoute('dashboard');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sgiRoute, isDbTestConnected, sgiIsAdmin]);
+  }, [sgiRoute, isDbTestConnected, sgiCanManageUsers]);
 
   const unsafeFilteredRecords = useMemo(() => {
     const selectedYear = Number(unsafeYearFilter);
@@ -4429,9 +4434,10 @@ export default function App() {
         </div>
       </header>
 
-      {sgiRoute === 'admin-users' && sgiIsAdmin ? (
+      {sgiRoute === 'admin-users' && sgiCanManageUsers ? (
         <SgiUserManagement
           currentUserEmail={registeredUserEmail ?? ''}
+          usesSupabaseAuth={isSupabaseConfigured()}
           onNavigateDashboard={() => navigateSgiRoute('dashboard')}
         />
       ) : (
@@ -5718,17 +5724,25 @@ export default function App() {
                 <div>
                   <p className="text-sm font-bold text-[#00502c]">Administración del tablero</p>
                   <p className="text-xs text-gray-600 mt-1">
-                    Gestiona roles de visualizador y editor para los usuarios registrados.
+                    {sgiCanManageUsers
+                      ? 'Gestiona roles de visualizador y editor para los usuarios registrados.'
+                      : 'Conecta Supabase en Vercel (VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY) y redeploy para habilitar la gestión de usuarios.'}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => navigateSgiRoute('admin-users')}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-soft text-sm font-semibold border border-[#00502c] bg-[#00502c] text-white hover:bg-[#006b3d] transition-colors"
-                >
-                  <Users size={16} />
-                  Gestión de usuarios
-                </button>
+                {sgiCanManageUsers ? (
+                  <button
+                    type="button"
+                    onClick={() => navigateSgiRoute('admin-users')}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-soft text-sm font-semibold border border-[#00502c] bg-[#00502c] text-white hover:bg-[#006b3d] transition-colors"
+                  >
+                    <Users size={16} />
+                    Gestión de usuarios
+                  </button>
+                ) : (
+                  <span className="inline-flex items-center justify-center px-4 py-2.5 rounded-soft text-xs font-semibold border border-amber-300 bg-amber-50 text-amber-900">
+                    Supabase pendiente de configurar
+                  </span>
+                )}
               </div>
             )}
             <div className="bg-white border border-[#eaecf0] rounded-soft p-4 shadow-sm space-y-4">

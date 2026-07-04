@@ -1,10 +1,22 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+const readEnv = (key: string): string | undefined => {
+  const value = import.meta.env[key as keyof ImportMetaEnv];
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (/YOUR_PROJECT|YOUR_SUPABASE|TU_PROYECTO|TU_ANON/i.test(trimmed)) return undefined;
+  return trimmed;
+};
+
+const supabaseUrl = readEnv('VITE_SUPABASE_URL');
+const supabaseAnonKey = readEnv('VITE_SUPABASE_ANON_KEY');
 
 export const isSupabaseConfigured = (): boolean =>
   Boolean(supabaseUrl && supabaseAnonKey);
+
+export const getSupabaseSetupMessage = (): string =>
+  'Supabase no está configurado. Agrega VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en Vercel (Settings → Environment Variables) o en el archivo .env local, y vuelve a desplegar la aplicación.';
 
 let client: SupabaseClient | null = null;
 

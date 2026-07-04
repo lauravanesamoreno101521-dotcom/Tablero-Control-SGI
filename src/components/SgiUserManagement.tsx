@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, RefreshCw, Shield, Users } from 'lucide-react';
-import { getSgiRoleLabel } from '../supabase/auth.ts';
+import { getSgiRoleLabel, SGI_BOOTSTRAP_ADMIN_EMAIL } from '../supabase/auth.ts';
 import {
   listSgiAppUsersForAdmin,
   updateSgiAppUserActiveForAdmin,
@@ -11,6 +11,7 @@ import {
 
 type SgiUserManagementProps = {
   currentUserEmail: string;
+  usesSupabaseAuth: boolean;
   onNavigateDashboard: () => void;
 };
 
@@ -29,6 +30,7 @@ const formatDateTime = (value: string | null): string => {
 
 export default function SgiUserManagement({
   currentUserEmail,
+  usesSupabaseAuth,
   onNavigateDashboard
 }: SgiUserManagementProps) {
   const [users, setUsers] = useState<SgiAppUserAdminRow[]>([]);
@@ -38,6 +40,15 @@ export default function SgiUserManagement({
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
+    if (!usesSupabaseAuth) {
+      setError(
+        'La gestión de usuarios requiere Supabase. Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en Vercel o en .env local y vuelve a desplegar.'
+      );
+      setUsers([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError('');
     const result = await listSgiAppUsersForAdmin();
@@ -48,7 +59,7 @@ export default function SgiUserManagement({
       setUsers(result.users);
     }
     setLoading(false);
-  }, []);
+  }, [usesSupabaseAuth]);
 
   useEffect(() => {
     void loadUsers();
@@ -96,6 +107,9 @@ export default function SgiUserManagement({
     setSavingUserId(null);
   };
 
+  const isBootstrapAdmin =
+    currentUserEmail.trim().toLowerCase() === SGI_BOOTSTRAP_ADMIN_EMAIL;
+
   return (
     <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:py-8">
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -129,13 +143,20 @@ export default function SgiUserManagement({
         </button>
       </div>
 
-      <div className="bg-emerald-50 border border-emerald-200 rounded-soft px-4 py-3 text-sm text-emerald-900 flex items-start gap-2 mb-4">
-        <Shield size={18} className="mt-0.5 flex-shrink-0 text-[#006b3d]" />
-        <p>
-          Solo el administrador <span className="font-mono font-semibold">admin@emprestur.com</span>{' '}
-          puede gestionar usuarios. Ruta directa: <span className="font-mono">#/admin/usuarios</span>
-        </p>
-      </div>
+      {isBootstrapAdmin ? (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-soft px-4 py-3 text-sm text-emerald-900 flex items-start gap-2 mb-4">
+          <Shield size={18} className="mt-0.5 flex-shrink-0 text-[#006b3d]" />
+          <p>
+            Sesión de administrador activa. Cambia el rol o el estado de cada usuario en la tabla;
+            tu cuenta de administrador no se puede desactivar desde aquí.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-amber-50 border border-amber-200 rounded-soft px-4 py-3 text-sm text-amber-900 mb-4">
+          Solo el administrador <span className="font-mono font-semibold">{SGI_BOOTSTRAP_ADMIN_EMAIL}</span>{' '}
+          puede gestionar usuarios.
+        </div>
+      )}
 
       {error && (
         <p className="text-xs text-red-600 font-medium bg-red-50 border border-red-200 rounded-soft px-3 py-2 mb-4">
@@ -152,6 +173,10 @@ export default function SgiUserManagement({
       <div className="bg-white border border-[#eaecf0] rounded-soft shadow-sm overflow-hidden">
         {loading ? (
           <p className="p-8 text-sm text-gray-500 text-center">Cargando usuarios...</p>
+        ) : error ? (
+          <p className="p-8 text-sm text-gray-600 text-center leading-relaxed max-w-xl mx-auto">
+            No se pudo cargar el listado. Revisa el mensaje superior y vuelve a intentar.
+          </p>
         ) : users.length === 0 ? (
           <p className="p-8 text-sm text-gray-500 text-center">No hay usuarios registrados.</p>
         ) : (
@@ -178,7 +203,7 @@ export default function SgiUserManagement({
                       <td className="px-4 py-3">
                         {isAdminAccount ? (
                           <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-[#00502c] bg-emerald-100 px-2 py-1 rounded-soft border border-emerald-200">
-                            {getSgiRoleLabel(user.role)}
+                            {getSgiRoleLabel(user.role, user.email)}
                           </span>
                         ) : (
                           <select
