@@ -66,14 +66,18 @@ export default function MedicinaTrabajoSection({
       ? alertRecords
       : alertRecords.filter(({ styles }) => styles.status === alertFilter);
 
-  const complianceStyles =
-    indicators.vencidos > 0
-      ? getMedicinaExpiryStyles('vencido', referenceDate)
-      : indicators.expireThisMonth > 0
-        ? getMedicinaExpiryStyles('este_mes', referenceDate)
-        : indicators.expireNextMonth > 0
-          ? getMedicinaExpiryStyles('proximo_mes', referenceDate)
-          : getMedicinaExpiryStyles('vigente', referenceDate);
+  const complianceMet = indicators.complianceRate >= 85;
+  const complianceCardStyles = complianceMet
+    ? {
+        bg: 'bg-emerald-50',
+        border: 'border-emerald-300',
+        text: 'text-[#006b3d]'
+      }
+    : {
+        bg: 'bg-red-50',
+        border: 'border-red-300',
+        text: 'text-[#ba1a1a]'
+      };
 
   const examStatusTotal = Math.max(indicators.ingresoCount + indicators.periodicoCount + indicators.seguimientoCount, 1);
 
@@ -113,28 +117,17 @@ export default function MedicinaTrabajoSection({
         </div>
       </div>
 
-      <div className={`rounded-soft border p-4 ${complianceStyles.bg} ${complianceStyles.border}`}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-wide font-semibold text-gray-600">
-              Cumplimiento exámenes ocupacionales
-            </p>
-            <p className={`text-2xl font-bold mt-1 ${complianceStyles.text}`}>
-              {indicators.complianceRate.toFixed(1)}%
-              <span className="text-sm font-semibold text-gray-600 ml-2">
-                sin vencidos ({indicators.totalWorkers - indicators.vencidos}/{indicators.totalWorkers})
-              </span>
-            </p>
-          </div>
-          <span className={`px-3 py-1 rounded-full text-xs font-bold border ${complianceStyles.badge}`}>
-            {complianceStyles.label}
-          </span>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-gray-600">
-          <span>Vencidos · antes de {indicators.currentMonthName}</span>
-          <span>Vencen este mes · {indicators.currentMonthName}</span>
-          <span>Vencen próximo mes · {indicators.nextMonthName}</span>
-          <span>Vigentes · posterior a {indicators.nextMonthName}</span>
+      <div className={`rounded-soft border p-4 ${complianceCardStyles.bg} ${complianceCardStyles.border}`}>
+        <div>
+          <p className="text-[11px] uppercase tracking-wide font-semibold text-gray-600">
+            Cumplimiento exámenes ocupacionales
+          </p>
+          <p className={`text-2xl font-bold mt-1 ${complianceCardStyles.text}`}>
+            {indicators.complianceRate.toFixed(1)}%
+            <span className="text-sm font-semibold text-gray-600 ml-2">
+              sin vencidos ({indicators.totalWorkers - indicators.vencidos}/{indicators.totalWorkers})
+            </span>
+          </p>
         </div>
       </div>
 
@@ -158,6 +151,7 @@ export default function MedicinaTrabajoSection({
               <p className="text-2xl font-bold text-[#191c1d] mt-1">
                 {indicators.periodicOneYear} / {indicators.periodicThreeYears}
               </p>
+              <p className="text-[10px] text-gray-500 mt-1">1 año operativos · 3 años administrativos</p>
             </div>
           </div>
 
