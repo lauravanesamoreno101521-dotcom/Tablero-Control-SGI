@@ -1,5 +1,5 @@
 -- Ejecutar UNA VEZ en Supabase SQL Editor para corregir login tras registro
--- (resuelve email vacío en JWT, crea perfil al iniciar sesión y repara usuarios existentes)
+-- (crea perfil al iniciar sesión, sincroniza Authentication → sgi_app_users y repara usuarios existentes)
 
 drop function if exists public.ensure_my_sgi_profile(text);
 
@@ -55,16 +55,12 @@ begin
   end if;
 
   select lower(trim(email)) into auth_email from auth.users where id = uid;
-  user_email := lower(trim(coalesce(
-    nullif(auth.jwt() ->> 'email', ''),
-    auth_email,
-    nullif(trim(p_email), '')
-  , '')));
 
-  if user_email = '' or auth_email is null or user_email <> auth_email then
+  if auth_email is null or auth_email = '' then
     return null;
   end if;
 
+  user_email := auth_email;
   assigned_role := case when user_email = 'admin@emprestur.com' then 'admin' else 'viewer' end;
 
   select * into existing
@@ -117,13 +113,22 @@ security definer
 set search_path = public, auth
 as $$
 declare
-  synced_count integer;
+  linked_count integer := 0;
+  upserted_count integer := 0;
 begin
   if not public.is_sgi_admin() then
     raise exception 'Acceso denegado';
   end if;
 
-  with inserted as (
+  update public.sgi_app_users s
+  set auth_user_id = u.id
+  from auth.users u
+  where lower(trim(u.email)) = lower(s.email)
+    and s.auth_user_id is null;
+
+  get diagnostics linked_count = row_count;
+
+  with upserted as (
     insert into public.sgi_app_users (auth_user_id, email, full_name, role, is_active, last_login_at)
     select
       u.id,
@@ -134,21 +139,86 @@ begin
       now()
     from auth.users u
     where lower(trim(u.email)) like '%@emprestur.com'
-      and not exists (
-        select 1 from public.sgi_app_users s where lower(s.email) = lower(trim(u.email))
-      )
     on conflict (email) do update
-    set auth_user_id = coalesce(public.sgi_app_users.auth_user_id, excluded.auth_user_id)
+    set
+      auth_user_id = coalesce(public.sgi_app_users.auth_user_id, excluded.auth_user_id),
+      full_name = coalesce(
+        nullif(trim(public.sgi_app_users.full_name), ''),
+        excluded.full_name
+      ),
+      is_active = true
     returning 1
   )
-  select count(*) into synced_count from inserted;
+  select count(*) into upserted_count from upserted;
 
-  return coalesce(synced_count, 0);
+  return coalesce(linked_count, 0) + coalesce(upserted_count, 0);
 end;
 $$;
 
 revoke all on function public.admin_sync_auth_users_to_sgi() from public;
 grant execute on function public.admin_sync_auth_users_to_sgi() to authenticated;
+
+create or replace function public.admin_provision_sgi_user_by_email(
+  p_email text,
+  p_full_name text default null
+)
+returns public.sgi_app_users
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  user_email text;
+  auth_uid uuid;
+  display_name text;
+  result public.sgi_app_users%rowtype;
+begin
+  if not public.is_sgi_admin() then
+    raise exception 'Acceso denegado';
+  end if;
+
+  user_email := lower(trim(coalesce(p_email, '')));
+  if user_email = '' or user_email !~ '@emprestur\.com$' then
+    raise exception 'Solo se permiten correos @emprestur.com';
+  end if;
+
+  if user_email = 'admin@emprestur.com' then
+    raise exception 'La cuenta de administrador principal ya existe';
+  end if;
+
+  select u.id
+  into auth_uid
+  from auth.users u
+  where lower(trim(u.email)) = user_email
+  limit 1;
+
+  display_name := coalesce(
+    nullif(trim(p_full_name), ''),
+    split_part(user_email, '@', 1)
+  );
+
+  insert into public.sgi_app_users (auth_user_id, email, full_name, role, is_active, last_login_at)
+  values (
+    auth_uid,
+    user_email,
+    display_name,
+    'viewer',
+    true,
+    now()
+  )
+  on conflict (email) do update
+  set
+    auth_user_id = coalesce(public.sgi_app_users.auth_user_id, excluded.auth_user_id),
+    full_name = coalesce(nullif(trim(public.sgi_app_users.full_name), ''), excluded.full_name),
+    is_active = true
+  returning * into result;
+
+  return result;
+end;
+$$;
+
+revoke all on function public.admin_provision_sgi_user_by_email(text, text) from public;
+grant execute on function public.admin_provision_sgi_user_by_email(text, text) to authenticated;
 
 drop policy if exists "sgi_users_update_own" on public.sgi_app_users;
 create policy "sgi_users_update_own"
@@ -168,7 +238,10 @@ as $$
     from public.sgi_app_users u
     where lower(u.email) = public.current_sgi_email()
       and u.is_active = true
-      and u.role in ('admin', 'editor')
+      and (
+        u.role in ('admin', 'editor')
+        or lower(u.email) = 'admin@emprestur.com'
+      )
   );
 $$;
 
@@ -176,15 +249,14 @@ $$;
 insert into public.sgi_app_users (auth_user_id, email, full_name, role, is_active, last_login_at)
 select
   u.id,
-  lower(u.email),
-  coalesce(u.raw_user_meta_data->>'full_name', split_part(lower(u.email), '@', 1)),
-  'viewer',
+  lower(trim(u.email)),
+  coalesce(u.raw_user_meta_data->>'full_name', split_part(lower(trim(u.email)), '@', 1)),
+  case when lower(trim(u.email)) = 'admin@emprestur.com' then 'admin' else 'viewer' end,
   true,
   now()
 from auth.users u
-where lower(u.email) like '%@emprestur.com'
-  and not exists (
-    select 1 from public.sgi_app_users s where lower(s.email) = lower(u.email)
-  )
+where lower(trim(u.email)) like '%@emprestur.com'
 on conflict (email) do update
-set auth_user_id = coalesce(public.sgi_app_users.auth_user_id, excluded.auth_user_id);
+set
+  auth_user_id = coalesce(public.sgi_app_users.auth_user_id, excluded.auth_user_id),
+  is_active = true;

@@ -193,8 +193,9 @@ export default function SgiUserManagement({
         </div>
       ) : (
         <div className="bg-amber-50 border border-amber-200 rounded-soft px-4 py-3 text-sm text-amber-900 mb-4">
-          Solo el administrador <span className="font-mono font-semibold">{SGI_BOOTSTRAP_ADMIN_EMAIL}</span>{' '}
-          puede gestionar usuarios.
+          Solo usuarios con rol <strong>Administrador</strong> pueden gestionar accesos. Si un
+          correo registrado no aparece, use <strong>Actualizar</strong> o el formulario de activación
+          manual.
         </div>
       )}
 
@@ -219,8 +220,10 @@ export default function SgiUserManagement({
       <div className="bg-white border border-[#eaecf0] rounded-soft shadow-sm p-4 mb-4">
         <h3 className="text-sm font-bold text-[#00502c] mb-2">Activar acceso manual</h3>
         <p className="text-xs text-gray-600 mb-3">
-          Si un correo ya se registró en la app pero no aparece en la tabla, actívalo aquí para
-          que pueda iniciar sesión como visualizador.
+          Si un correo ya se registró en la app pero no aparece en la tabla, actívalo aquí con el
+          correo exacto de Authentication (por ejemplo{' '}
+          <span className="font-mono">saludocupacionalmed@emprestur.com</span>). Se vinculará
+          automáticamente con la cuenta de Supabase Auth.
         </p>
         <div className="flex flex-col sm:flex-row gap-2">
           <input

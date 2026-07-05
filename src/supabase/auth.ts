@@ -93,10 +93,23 @@ async function fetchProfileViaRpc(
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
-  const { data, error } = await supabase.rpc('ensure_my_sgi_profile', {
-    p_full_name: fullName?.trim() || null,
-    p_email: email
+  const normalizedEmail = email.trim().toLowerCase();
+  const displayName = fullName?.trim() || null;
+
+  let { data, error } = await supabase.rpc('ensure_my_sgi_profile', {
+    p_full_name: displayName,
+    p_email: normalizedEmail
   });
+
+  if (
+    error &&
+    (error.message.includes('Could not find the function') ||
+      error.message.includes('ensure_my_sgi_profile'))
+  ) {
+    ({ data, error } = await supabase.rpc('ensure_my_sgi_profile', {
+      p_full_name: displayName
+    }));
+  }
 
   if (error) {
     console.error('ensure_my_sgi_profile:', error.message);
@@ -115,26 +128,47 @@ async function fetchProfileViaTable(
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
-  const { data, error } = await supabase
+  const normalizedEmail = email.trim().toLowerCase();
+  const displayName = fullName?.trim() || normalizedEmail.split('@')[0] || normalizedEmail;
+  const now = new Date().toISOString();
+
+  const selectColumns = 'id, auth_user_id, email, full_name, role, is_active';
+
+  const { data: byAuthId, error: byAuthIdError } = await supabase
     .from('sgi_app_users')
-    .select('id, auth_user_id, email, full_name, role, is_active')
-    .eq('email', email)
+    .select(selectColumns)
+    .eq('auth_user_id', authUserId)
     .maybeSingle();
 
-  if (error) {
-    console.error('Consulta sgi_app_users:', error.message);
-    return null;
+  if (byAuthIdError) {
+    console.error('Consulta sgi_app_users por auth_user_id:', byAuthIdError.message);
   }
 
-  if (!data) {
-    const displayName = fullName?.trim() || email.split('@')[0] || email;
+  let row = byAuthId as AppUserRow | null;
+
+  if (!row) {
+    const { data, error } = await supabase
+      .from('sgi_app_users')
+      .select(selectColumns)
+      .eq('email', normalizedEmail)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Consulta sgi_app_users:', error.message);
+      return null;
+    }
+
+    row = data as AppUserRow | null;
+  }
+
+  if (!row) {
     const { error: insertError } = await supabase.from('sgi_app_users').insert({
       auth_user_id: authUserId,
-      email,
+      email: normalizedEmail,
       full_name: displayName,
       role: 'viewer',
       is_active: true,
-      last_login_at: new Date().toISOString()
+      last_login_at: now
     });
 
     if (insertError) {
@@ -142,22 +176,22 @@ async function fetchProfileViaTable(
       return null;
     }
 
-    return fetchProfileViaTable(authUserId, email);
+    return fetchProfileViaTable(authUserId, normalizedEmail, fullName);
   }
 
-  if (!data.is_active) return null;
+  if (!row.is_active) return null;
 
-  const now = new Date().toISOString();
   const patch: { last_login_at: string; auth_user_id?: string } = { last_login_at: now };
-  if (!data.auth_user_id) {
+  if (!row.auth_user_id) {
     patch.auth_user_id = authUserId;
   }
 
-  await supabase.from('sgi_app_users').update(patch).eq('id', data.id);
+  await supabase.from('sgi_app_users').update(patch).eq('id', row.id);
 
   return mapAppUser({
-    ...data,
-    auth_user_id: data.auth_user_id ?? authUserId
+    ...row,
+    auth_user_id: row.auth_user_id ?? authUserId,
+    email: normalizedEmail
   } as AppUserRow);
 }
 
@@ -166,11 +200,13 @@ async function resolveAuthorizedAppUser(
   email: string,
   fullName?: string
 ): Promise<{ user: SgiAppUser | null; inactive: boolean }> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const rpcProfile = await fetchProfileViaRpc(email, fullName);
+  const normalizedEmail = email.trim().toLowerCase();
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const rpcProfile = await fetchProfileViaRpc(normalizedEmail, fullName);
     if (rpcProfile) return { user: await finalizeAppUser(rpcProfile), inactive: false };
 
-    const tableProfile = await fetchProfileViaTable(authUserId, email, fullName);
+    const tableProfile = await fetchProfileViaTable(authUserId, normalizedEmail, fullName);
     if (tableProfile) return { user: await finalizeAppUser(tableProfile), inactive: false };
 
     const supabase = getSupabaseClient();
@@ -178,14 +214,14 @@ async function resolveAuthorizedAppUser(
       const { data } = await supabase
         .from('sgi_app_users')
         .select('is_active')
-        .eq('email', email)
+        .eq('email', normalizedEmail)
         .maybeSingle();
       if (data && !data.is_active) {
         return { user: null, inactive: true };
       }
     }
 
-    if (attempt < 2) await wait(400);
+    if (attempt < 3) await wait(500);
   }
 
   return { user: null, inactive: false };

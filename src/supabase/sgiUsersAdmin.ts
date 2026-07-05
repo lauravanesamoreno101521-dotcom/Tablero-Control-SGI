@@ -131,6 +131,27 @@ export async function provisionSgiUserByEmailForAdmin(
   }
 
   const displayName = fullName?.trim() || normalizedEmail.split('@')[0] || normalizedEmail;
+
+  const { error: rpcError } = await supabase.rpc('admin_provision_sgi_user_by_email', {
+    p_email: normalizedEmail,
+    p_full_name: displayName
+  });
+
+  if (!rpcError) {
+    return { ok: true };
+  }
+
+  const missingProvisionRpc =
+    rpcError.message.includes('admin_provision_sgi_user_by_email') ||
+    rpcError.message.includes('Could not find the function');
+
+  if (!missingProvisionRpc) {
+    return {
+      ok: false,
+      error: rpcError.message || 'No se pudo activar el acceso para ese correo.'
+    };
+  }
+
   const { error } = await supabase.from('sgi_app_users').upsert(
     {
       email: normalizedEmail,
