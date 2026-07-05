@@ -19,6 +19,15 @@ const normalizeText = (value: unknown) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]/g, '');
 
+const normalizeEstadoVisita = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const normalized = normalizeText(trimmed);
+  if (normalized.includes('sinejecutar')) return 'Sin Ejecutar';
+  if (normalized.includes('ejecutada')) return 'Ejecutada';
+  return trimmed;
+};
+
 const toNumberOrZero = (value: unknown): number => {
   const parsed = Number(String(value ?? '').replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -74,6 +83,20 @@ const normalizeIncapHealthEntity = (value: unknown): string => {
   return raw;
 };
 
+const normalizeUnsafeSiNo = (value: unknown): 'SI' | 'NO' | '' => {
+  const normalized = normalizeText(value);
+  if (normalized === 'si') return 'SI';
+  if (normalized === 'no') return 'NO';
+  return '';
+};
+
+const normalizeUnsafeInfractionLocation = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (normalizeText(trimmed) === 'itagui') return 'Itagüí';
+  return trimmed;
+};
+
 const normalizeUnsafeActionType = (value: unknown): string => {
   const cleaned = String(value ?? '').replace(/\s+/g, ' ').trim();
   if (!cleaned) return 'Sin acción';
@@ -88,13 +111,6 @@ const normalizeUnsafeControlStatus = (value: unknown): string => {
   if (normalized === 'nopago') return 'NO PAGO';
   if (normalized === 'pago') return 'PAGO';
   return cleaned.toUpperCase();
-};
-
-const normalizeUnsafeSiNo = (value: unknown): 'SI' | 'NO' | '' => {
-  const normalized = normalizeText(value);
-  if (normalized === 'si') return 'SI';
-  if (normalized === 'no') return 'NO';
-  return '';
 };
 
 const inferUnsafeRiskLevel = (amount: number, description: string): 'Alto' | 'Medio' | 'Bajo' => {
@@ -364,7 +380,9 @@ async function importUnsafeRecords(workbook: import('xlsx').WorkBook, XLSX: type
         city: String(row.Ciudad ?? '').trim(),
         date,
         dateLabel: date ? formatShortDate(date) : rawDate,
-        location: String(row['Lugar de la Infraccion'] ?? row['Lugar de la Infracción'] ?? '').trim(),
+        location: normalizeUnsafeInfractionLocation(
+          String(row['Lugar de la Infraccion'] ?? row['Lugar de la Infracción'] ?? '').trim()
+        ),
         code: String(row['Código infracción'] ?? row['Codigo infraccion'] ?? '').trim(),
         plate: String(row.Placa ?? '').trim(),
         description: description || 'Sin descripción',
@@ -425,7 +443,8 @@ async function importSstRecords(workbook: import('xlsx').WorkBook, XLSX: typeof 
         executed,
         accompanimentText: activityText,
         hasAccompaniment,
-        estadoVisita,
+        estadoVisita:
+          normalizeEstadoVisita(estadoVisita) || (executed ? 'Ejecutada' : 'Sin Ejecutar'),
         impactedPeople: impacted,
         topics: pickField(row, ['temas abordados', 'observacion novedades'])
       };

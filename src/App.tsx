@@ -507,6 +507,18 @@ const normalizeUnsafeSiNo = (value: unknown): 'SI' | 'NO' | '' => {
   return '';
 };
 
+const normalizeUnsafeInfractionLocation = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (normalizeText(trimmed) === 'itagui') return 'Itagüí';
+  return trimmed;
+};
+
+const withNormalizedUnsafeInfractionLocation = (row: UnsafeBehaviorRecord): UnsafeBehaviorRecord => ({
+  ...row,
+  location: normalizeUnsafeInfractionLocation(row.location)
+});
+
 const inferUnsafeRiskLevel = (amount: number, description: string): 'Alto' | 'Medio' | 'Bajo' => {
   const descriptionNorm = normalizeText(description);
   if (amount >= 2000000 || descriptionNorm.includes('alcohol') || descriptionNorm.includes('sustancias')) {
@@ -1139,7 +1151,7 @@ export default function App() {
           city: String(record['Ciudad'] ?? '').trim(),
           date,
           dateLabel: date ? formatShortDate(date) : rawDate,
-          location: String(record['Lugar de la Infraccion'] ?? '').trim(),
+          location: normalizeUnsafeInfractionLocation(String(record['Lugar de la Infraccion'] ?? '').trim()),
           code: String(record['Código infracción'] ?? '').trim(),
           plate: String(record['Placa'] ?? '').trim(),
           description,
@@ -1309,7 +1321,9 @@ export default function App() {
 
   const applySgiDatasetsFromSupabase = (datasets: SgiPersistedDatasets) => {
     setSstVisits(datasets.acompanamiento as SstVisitRecord[]);
-    setUnsafeBehaviorRecords(datasets.comportamientos as UnsafeBehaviorRecord[]);
+    setUnsafeBehaviorRecords(
+      (datasets.comportamientos as UnsafeBehaviorRecord[]).map(withNormalizedUnsafeInfractionLocation)
+    );
     setIncapRecords(datasets.incapacidades as IncapRecord[]);
     setFormacionRecords(datasets.formacion as FormacionRecord[]);
     setAccidentalidadRecords(datasets.accidentalidad as AccidentalidadRecord[]);
@@ -2353,7 +2367,7 @@ export default function App() {
       client: uniqueSorted(unsafeBehaviorRecords.map((row) => row.client)),
       contractType: uniqueSorted(unsafeBehaviorRecords.map((row) => row.contractType)),
       city: uniqueSorted(unsafeBehaviorRecords.map((row) => row.city)),
-      location: uniqueSorted(unsafeBehaviorRecords.map((row) => row.location)),
+      location: uniqueSorted(unsafeBehaviorRecords.map((row) => normalizeUnsafeInfractionLocation(row.location))),
       code: uniqueSorted(unsafeBehaviorRecords.map((row) => row.code)),
       plate: uniqueSorted(unsafeBehaviorRecords.map((row) => row.plate)),
       description: uniqueSorted(unsafeBehaviorRecords.map((row) => row.description)),
@@ -3752,7 +3766,9 @@ export default function App() {
         setSstVisits(result.records as SstVisitRecord[]);
         resetDbForm();
       } else if (service === 'Comportamientos inseguros') {
-        setUnsafeBehaviorRecords(result.records as UnsafeBehaviorRecord[]);
+        setUnsafeBehaviorRecords(
+          (result.records as UnsafeBehaviorRecord[]).map(withNormalizedUnsafeInfractionLocation)
+        );
         resetUnsafeForm();
       } else if (service === 'Incapacidades') {
         setIncapRecords(result.records as IncapRecord[]);
@@ -3896,7 +3912,7 @@ export default function App() {
                 client: unsafeForm.client.trim(),
                 contractType: unsafeForm.contractType.trim(),
                 city: unsafeForm.city.trim(),
-                location: unsafeForm.location.trim(),
+                location: normalizeUnsafeInfractionLocation(unsafeForm.location.trim()),
                 code: unsafeForm.code.trim(),
                 plate: unsafeForm.plate.trim().toUpperCase(),
                 description,
@@ -3933,7 +3949,7 @@ export default function App() {
           city: unsafeForm.city.trim(),
           date,
           dateLabel,
-          location: unsafeForm.location.trim(),
+          location: normalizeUnsafeInfractionLocation(unsafeForm.location.trim()),
           code: unsafeForm.code.trim(),
           plate: unsafeForm.plate.trim().toUpperCase(),
           description,
@@ -7878,7 +7894,7 @@ export default function App() {
                             <td className="px-3 py-2">{row.contractType}</td>
                             <td className="px-3 py-2">{row.city}</td>
                             <td className="px-3 py-2">{row.dateLabel}</td>
-                            <td className="px-3 py-2">{row.location}</td>
+                            <td className="px-3 py-2">{normalizeUnsafeInfractionLocation(row.location)}</td>
                             <td className="px-3 py-2">{row.code || 'N/A'}</td>
                             <td className="px-3 py-2">{row.plate}</td>
                             <td className="px-3 py-2 min-w-[280px]">{row.description}</td>
