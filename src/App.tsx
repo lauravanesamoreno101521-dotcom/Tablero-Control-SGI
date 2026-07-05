@@ -671,6 +671,18 @@ const matchesAccidentalidadDbFieldFilter = (filterValue: string, rowValue: strin
   return normalizeText(rowValue).includes(normalizeText(filter));
 };
 
+const normalizeAccidentalidadDuringService = (value: unknown): string => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (normalizeText(raw) === 'no') return 'No';
+  return raw;
+};
+
+const withNormalizedAccidentalidadRecord = (record: AccidentalidadRecord): AccidentalidadRecord => ({
+  ...record,
+  duringService: normalizeAccidentalidadDuringService(record.duringService)
+});
+
 const detectGestorAccompaniment = (activityText: string, executed: boolean): boolean => {
   const normalized = normalizeText(activityText);
   if (!normalized) return executed;
@@ -1339,12 +1351,12 @@ export default function App() {
   const initialAccidentalidadRecords = useMemo((): AccidentalidadRecord[] => {
     return (Array.isArray(accidentalidadBdRaw) ? accidentalidadBdRaw : []).map((row) => {
       const record = row as AccidentalidadRecord;
-      return {
+      return withNormalizedAccidentalidadRecord({
         ...record,
         eventDate: record.eventDate ?? '',
         month: record.month ?? 0,
         year: record.year ?? 2026
-      };
+      });
     });
   }, []);
 
@@ -1389,7 +1401,9 @@ export default function App() {
     );
     setIncapRecords((datasets.incapacidades as IncapRecord[]).map(withNormalizedIncapRole));
     setFormacionRecords(datasets.formacion as FormacionRecord[]);
-    setAccidentalidadRecords(datasets.accidentalidad as AccidentalidadRecord[]);
+    setAccidentalidadRecords(
+      (datasets.accidentalidad as AccidentalidadRecord[]).map(withNormalizedAccidentalidadRecord)
+    );
     setMedicinaTrabajoRecords(
       (datasets.medicinaTrabajo as MedicinaTrabajoRecord[]).map(withNormalizedMedicinaRecord)
     );
@@ -3458,7 +3472,9 @@ export default function App() {
       contractType: uniqueSorted(accidentalidadRecords.map((row) => row.contractType)),
       characteristic: uniqueSorted(accidentalidadRecords.map((row) => row.characteristic)),
       severity: uniqueSorted(accidentalidadRecords.map((row) => row.severity)),
-      duringService: uniqueSorted(accidentalidadRecords.map((row) => row.duringService)),
+      duringService: uniqueSorted(
+        accidentalidadRecords.map((row) => normalizeAccidentalidadDuringService(row.duringService))
+      ),
       riskDescription: uniqueSorted(accidentalidadRecords.map((row) => row.riskDescription))
     };
   }, [accidentalidadRecords]);
@@ -3670,7 +3686,7 @@ export default function App() {
       employeeName: row.employeeName,
       plate: row.plate,
       client: row.client,
-      duringService: row.duringService,
+      duringService: normalizeAccidentalidadDuringService(row.duringService),
       characteristic: row.characteristic,
       severity: row.severity,
       lossLevel: row.lossLevel,
@@ -3716,7 +3732,7 @@ export default function App() {
       employeeName: accidentalidadForm.employeeName.trim(),
       plate: accidentalidadForm.plate.trim(),
       client: accidentalidadForm.client.trim(),
-      duringService: accidentalidadForm.duringService.trim(),
+      duringService: normalizeAccidentalidadDuringService(accidentalidadForm.duringService.trim()),
       characteristic: accidentalidadForm.characteristic.trim(),
       severity: accidentalidadForm.severity.trim(),
       lossLevel: accidentalidadForm.lossLevel.trim(),
