@@ -1419,7 +1419,11 @@ export default function App() {
     appUser: SgiAppUser
   ): Promise<{ ok: true } | { ok: false; error: string }> => {
     supabaseSyncReadyRef.current = false;
-    const datasets = await loadSgiDatasetsFromSupabase(buildSgiDatasetBaselines(), appUser.email);
+    const datasets = await loadSgiDatasetsFromSupabase(
+      buildSgiDatasetBaselines(),
+      appUser.email,
+      canEditSgiDatasets(appUser.role, appUser.email)
+    );
     applySgiDatasetsFromSupabase(datasets);
     setRegisteredUserEmail(appUser.email);
     setSgiAppUserRole(appUser.role);

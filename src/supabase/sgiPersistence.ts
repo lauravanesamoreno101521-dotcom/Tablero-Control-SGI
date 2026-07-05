@@ -105,7 +105,8 @@ const hasObjectData = (value: unknown): value is Record<string, unknown> =>
 
 export async function loadSgiDatasetsFromSupabase(
   baselines: SgiPersistedDatasets,
-  updatedByEmail: string
+  updatedByEmail: string,
+  canWrite = false
 ): Promise<SgiPersistedDatasets> {
   if (!isSupabaseConfigured()) return baselines;
 
@@ -175,7 +176,7 @@ export async function loadSgiDatasetsFromSupabase(
   if (!hasObjectData(incapInformeEditsRaw)) seedPayload.incapInformeEdits = baselines.incapInformeEdits;
   if (!hasObjectData(formacionInformeEditsRaw)) seedPayload.formacionInformeEdits = baselines.formacionInformeEdits;
 
-  if (Object.keys(seedPayload).length > 0) {
+  if (Object.keys(seedPayload).length > 0 && canWrite) {
     await persistSgiDatasetsToSupabase(
       {
         acompanamiento: seedPayload.acompanamiento ?? loaded.acompanamiento,
