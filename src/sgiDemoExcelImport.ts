@@ -83,6 +83,55 @@ const normalizeIncapHealthEntity = (value: unknown): string => {
   return raw;
 };
 
+const normalizeIncapRole = (value: unknown): string => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const normalized = normalizeText(raw);
+
+  if (normalized === 'analistacontable') return 'Analista contable';
+  if (normalized === 'analistadetalentohumano' || normalized === 'analistatalentohumano') {
+    return 'Analista talento humano';
+  }
+  if (normalized === 'aprendizdetalentohumano' || normalized === 'aprendizth') {
+    return 'Aprendiz talento humano';
+  }
+  if (normalized === 'auxiliarcontable' || normalized === 'auxiliardecontabilidad') {
+    return 'Auxiliar contable';
+  }
+  if (
+    normalized === 'auxiliardeoperaciones' ||
+    normalized === 'auxiliaroperaciones' ||
+    normalized === 'auxiiardeoperaciones'
+  ) {
+    return 'Auxiliar operaciones';
+  }
+  if (
+    normalized === 'coordinadordetalentohumano' ||
+    normalized === 'coordinadortalentohumano' ||
+    normalized === 'coordinadoradetalentohumano' ||
+    normalized === 'coordinadoratalentohumano'
+  ) {
+    return 'Coordinador talento humano';
+  }
+  if (
+    normalized === 'directordeflotapropia' ||
+    normalized === 'directorflotapropia' ||
+    normalized === 'directorfolatpropia'
+  ) {
+    return 'Director flota propia';
+  }
+  if (normalized === 'directoradehseq' || normalized === 'directorahseq') {
+    return 'Directora HSEQ';
+  }
+  if (normalized === 'gestorlogistico') return 'Gestor Logístico';
+  if (normalized === 'liderdegestiondocumental') return 'Lider gestión documental';
+  if (normalized === 'profesionalcompras' || normalized === 'profesionaldecompras') {
+    return 'Profesional compras';
+  }
+
+  return raw;
+};
+
 const normalizeUnsafeSiNo = (value: unknown): 'SI' | 'NO' | '' => {
   const normalized = normalizeText(value);
   if (normalized === 'si') return 'SI';
@@ -320,7 +369,7 @@ async function importIncapRecords(
         healthEntity: normalizeIncapHealthEntity(row['Entidad salud que cubre la atención']),
         payerEntity: String(row['ENTIDAD QUE PAGA LA INCAPACIDAD'] ?? '').trim(),
         contractType: normalizeContractType(row['Tipo de Contrato']),
-        role: String(row.Cargo ?? '').trim(),
+        role: normalizeIncapRole(row.Cargo),
         entryDate,
         client: normalizeIncapClient(row['Contrato / Cliente']),
         city: String(row['Ciudad de Agencia'] ?? '').trim(),

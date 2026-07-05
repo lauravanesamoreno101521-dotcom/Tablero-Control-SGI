@@ -600,6 +600,60 @@ const normalizeIncapHealthEntity = (value: unknown): string => {
   return raw;
 };
 
+const normalizeIncapRole = (value: unknown): string => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const normalized = normalizeText(raw);
+
+  if (normalized === 'analistacontable') return 'Analista contable';
+  if (normalized === 'analistadetalentohumano' || normalized === 'analistatalentohumano') {
+    return 'Analista talento humano';
+  }
+  if (normalized === 'aprendizdetalentohumano' || normalized === 'aprendizth') {
+    return 'Aprendiz talento humano';
+  }
+  if (normalized === 'auxiliarcontable' || normalized === 'auxiliardecontabilidad') {
+    return 'Auxiliar contable';
+  }
+  if (
+    normalized === 'auxiliardeoperaciones' ||
+    normalized === 'auxiliaroperaciones' ||
+    normalized === 'auxiiardeoperaciones'
+  ) {
+    return 'Auxiliar operaciones';
+  }
+  if (
+    normalized === 'coordinadordetalentohumano' ||
+    normalized === 'coordinadortalentohumano' ||
+    normalized === 'coordinadoradetalentohumano' ||
+    normalized === 'coordinadoratalentohumano'
+  ) {
+    return 'Coordinador talento humano';
+  }
+  if (
+    normalized === 'directordeflotapropia' ||
+    normalized === 'directorflotapropia' ||
+    normalized === 'directorfolatpropia'
+  ) {
+    return 'Director flota propia';
+  }
+  if (normalized === 'directoradehseq' || normalized === 'directorahseq') {
+    return 'Directora HSEQ';
+  }
+  if (normalized === 'gestorlogistico') return 'Gestor Logístico';
+  if (normalized === 'liderdegestiondocumental') return 'Lider gestión documental';
+  if (normalized === 'profesionalcompras' || normalized === 'profesionaldecompras') {
+    return 'Profesional compras';
+  }
+
+  return raw;
+};
+
+const withNormalizedIncapRole = (row: IncapRecord): IncapRecord => ({
+  ...row,
+  role: normalizeIncapRole(row.role)
+});
+
 const formatDateForInput = (date: Date | null): string => {
   if (!date) return '';
   const year = date.getFullYear();
@@ -1218,7 +1272,7 @@ export default function App() {
           healthEntity: normalizeIncapHealthEntity(record['Entidad salud que cubre la atención']),
           payerEntity: String(record['ENTIDAD QUE PAGA LA INCAPACIDAD'] ?? '').trim(),
           contractType: normalizeContractType(record['Tipo de Contrato']),
-          role: String(record['Cargo'] ?? '').trim(),
+          role: normalizeIncapRole(record['Cargo']),
           entryDate,
           client: normalizeIncapClient(record['Contrato / Cliente']),
           city: String(record['Ciudad de Agencia'] ?? '').trim(),
@@ -1324,7 +1378,7 @@ export default function App() {
     setUnsafeBehaviorRecords(
       (datasets.comportamientos as UnsafeBehaviorRecord[]).map(withNormalizedUnsafeInfractionLocation)
     );
-    setIncapRecords(datasets.incapacidades as IncapRecord[]);
+    setIncapRecords((datasets.incapacidades as IncapRecord[]).map(withNormalizedIncapRole));
     setFormacionRecords(datasets.formacion as FormacionRecord[]);
     setAccidentalidadRecords(datasets.accidentalidad as AccidentalidadRecord[]);
     setMedicinaTrabajoRecords(datasets.medicinaTrabajo as MedicinaTrabajoRecord[]);
@@ -1789,7 +1843,7 @@ export default function App() {
       gender: uniqueSorted(incapRecords.map((row) => row.gender)),
       healthEntity: uniqueSorted(incapRecords.map((row) => row.healthEntity)),
       payerEntity: uniqueSorted(incapRecords.map((row) => row.payerEntity)),
-      role: uniqueSorted(incapRecords.map((row) => row.role)),
+      role: uniqueSorted(incapRecords.map((row) => normalizeIncapRole(row.role))),
       incapClass: uniqueSorted([...INCAP_CLASS_OPTIONS, ...incapRecords.map((row) => row.incapClass)]),
       effectivePeriod: uniqueSorted(incapRecords.map((row) => row.effectivePeriod)),
       initialPeriod: uniqueSorted(incapRecords.map((row) => row.initialPeriod)),
@@ -3771,7 +3825,7 @@ export default function App() {
         );
         resetUnsafeForm();
       } else if (service === 'Incapacidades') {
-        setIncapRecords(result.records as IncapRecord[]);
+        setIncapRecords((result.records as IncapRecord[]).map(withNormalizedIncapRole));
         resetIncapForm();
       } else if (service === 'Formación') {
         const imported = result.records as FormacionRecord[];
@@ -4108,7 +4162,7 @@ export default function App() {
                 gender: incapForm.gender.trim(),
                 healthEntity: normalizeIncapHealthEntity(incapForm.healthEntity),
                 payerEntity: incapForm.payerEntity.trim(),
-                role: incapForm.role.trim(),
+                role: normalizeIncapRole(incapForm.role.trim()),
                 entryDate: validEntryDate,
                 incapDays,
                 startDate: validStartDate,
@@ -4143,7 +4197,7 @@ export default function App() {
           healthEntity: normalizeIncapHealthEntity(incapForm.healthEntity),
           payerEntity: incapForm.payerEntity.trim(),
           contractType: normalizeContractType(incapForm.contractType),
-          role: incapForm.role.trim(),
+          role: normalizeIncapRole(incapForm.role.trim()),
           entryDate: validEntryDate,
           client: normalizeIncapClient(incapForm.client),
           city: incapForm.city.trim(),
@@ -4339,7 +4393,7 @@ export default function App() {
       healthEntity: row.healthEntity,
       payerEntity: row.payerEntity,
       contractType: row.contractType,
-      role: row.role,
+      role: normalizeIncapRole(row.role),
       entryDate: formatDateForInput(row.entryDate),
       client: row.client,
       city: row.city,
@@ -8154,7 +8208,7 @@ export default function App() {
                             <td className={INCAP_DB_TD_CLASS} title={row.healthEntity}>{row.healthEntity}</td>
                             <td className={INCAP_DB_TD_CLASS} title={row.payerEntity}>{row.payerEntity}</td>
                             <td className={INCAP_DB_TD_CLASS} title={row.contractType}>{row.contractType}</td>
-                            <td className={INCAP_DB_TD_CLASS} title={row.role}>{row.role}</td>
+                            <td className={INCAP_DB_TD_CLASS} title={normalizeIncapRole(row.role)}>{normalizeIncapRole(row.role)}</td>
                             <td className={INCAP_DB_TD_CLASS} title={formatShortDate(row.entryDate)}>{formatShortDate(row.entryDate)}</td>
                             <td className={INCAP_DB_TD_CLASS} title={row.client}>{row.client}</td>
                             <td className={INCAP_DB_TD_CLASS} title={row.city}>{row.city}</td>
