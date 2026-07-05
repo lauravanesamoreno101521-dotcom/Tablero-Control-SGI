@@ -105,6 +105,34 @@ const normalizeText = (value: unknown) =>
     .trim()
     .toLowerCase();
 
+const normalizeMedicinaLookupKey = (value: unknown) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .toLowerCase();
+
+export const normalizeMedicinaCity = (value: unknown): string => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const normalized = normalizeMedicinaLookupKey(raw);
+  if (normalized === 'sabanalrga' || normalized === 'sanalrga') return 'SABANALARGA';
+  return raw;
+};
+
+export const normalizeMedicinaExamStatus = (value: unknown): string => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (normalizeMedicinaLookupKey(raw) === 'periodicos') return 'PERIODICO';
+  return raw;
+};
+
+export const withNormalizedMedicinaRecord = (record: MedicinaTrabajoRecord): MedicinaTrabajoRecord => ({
+  ...record,
+  city: normalizeMedicinaCity(record.city),
+  examStatus: normalizeMedicinaExamStatus(record.examStatus)
+});
+
 const parseIsoDate = (iso: string): Date | null => {
   if (!iso) return null;
   const date = new Date(`${iso}T00:00:00`);

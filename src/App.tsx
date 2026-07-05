@@ -135,6 +135,9 @@ import {
   MEDICINA_MONTH_NAMES,
   resolveMedicinaReferenceDate,
   resolveMedicinaTrendYear,
+  normalizeMedicinaCity,
+  normalizeMedicinaExamStatus,
+  withNormalizedMedicinaRecord,
   type MedicinaTrabajoRecord
 } from './medicinaTrabajoDemo.ts';
 import MedicinaTrabajoSection from './components/MedicinaTrabajoSection.tsx';
@@ -660,6 +663,12 @@ const formatDateForInput = (date: Date | null): string => {
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
   const day = `${date.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const matchesAccidentalidadDbFieldFilter = (filterValue: string, rowValue: string): boolean => {
+  const filter = filterValue.trim();
+  if (!filter) return true;
+  return normalizeText(rowValue).includes(normalizeText(filter));
 };
 
 const detectGestorAccompaniment = (activityText: string, executed: boolean): boolean => {
@@ -1346,7 +1355,7 @@ export default function App() {
   const initialMedicinaTrabajoRecords = useMemo((): MedicinaTrabajoRecord[] => {
     return (Array.isArray(medicinaTrabajoBdRaw) ? medicinaTrabajoBdRaw : []).map((row) => {
       const record = row as MedicinaTrabajoRecord;
-      return {
+      return withNormalizedMedicinaRecord({
         ...record,
         examMonth: record.examMonth ?? 0,
         examYear: record.examYear ?? 0,
@@ -1354,7 +1363,7 @@ export default function App() {
         expiryYear: record.expiryYear ?? 0,
         cost: Number(record.cost) || 0,
         periodicYears: Number(record.periodicYears) || 1
-      };
+      });
     });
   }, []);
 
@@ -1381,7 +1390,9 @@ export default function App() {
     setIncapRecords((datasets.incapacidades as IncapRecord[]).map(withNormalizedIncapRole));
     setFormacionRecords(datasets.formacion as FormacionRecord[]);
     setAccidentalidadRecords(datasets.accidentalidad as AccidentalidadRecord[]);
-    setMedicinaTrabajoRecords(datasets.medicinaTrabajo as MedicinaTrabajoRecord[]);
+    setMedicinaTrabajoRecords(
+      (datasets.medicinaTrabajo as MedicinaTrabajoRecord[]).map(withNormalizedMedicinaRecord)
+    );
     setIncapDemoInformeEdits(
       datasets.incapInformeEdits as Record<number, Partial<IncapInformeMonthlyInputs & IncapInformeManualBdEdits>>
     );
@@ -2150,6 +2161,23 @@ export default function App() {
       return true;
     });
   }, [accidentalidadRecords, accidentalidadYearFilter, sgiStartDate, sgiEndDate]);
+
+  const accidentalidadDbDisplayRecords = useMemo(() => {
+    return accidentalidadFilteredRecords.filter((row) => {
+      if (accidentalidadForm.eventDate && row.eventDate !== accidentalidadForm.eventDate) return false;
+      if (accidentalidadForm.reportDate && row.reportDate !== accidentalidadForm.reportDate) return false;
+      if (!matchesAccidentalidadDbFieldFilter(accidentalidadForm.cedula, row.cedula)) return false;
+      if (!matchesAccidentalidadDbFieldFilter(accidentalidadForm.employeeName, row.employeeName)) return false;
+      if (!matchesAccidentalidadDbFieldFilter(accidentalidadForm.client, row.client)) return false;
+      if (!matchesAccidentalidadDbFieldFilter(accidentalidadForm.linkType, row.linkType)) return false;
+      if (!matchesAccidentalidadDbFieldFilter(accidentalidadForm.contractType, row.contractType)) return false;
+      if (!matchesAccidentalidadDbFieldFilter(accidentalidadForm.characteristic, row.characteristic)) return false;
+      if (!matchesAccidentalidadDbFieldFilter(accidentalidadForm.severity, row.severity)) return false;
+      if (!matchesAccidentalidadDbFieldFilter(accidentalidadForm.duringService, row.duringService)) return false;
+      if (!matchesAccidentalidadDbFieldFilter(accidentalidadForm.riskDescription, row.riskDescription)) return false;
+      return true;
+    });
+  }, [accidentalidadFilteredRecords, accidentalidadForm]);
 
   const accidentalidadIndicators = useMemo(() => {
     const year = accidentalidadInformeYear ?? ACCIDENTALIDAD_INFORME_YEARS[0] ?? 2026;
@@ -3405,14 +3433,35 @@ export default function App() {
       );
 
     return {
-      city: uniqueSorted(medicinaTrabajoRecords.map((row) => row.city)),
+      city: uniqueSorted(medicinaTrabajoRecords.map((row) => normalizeMedicinaCity(row.city))),
       contract: uniqueSorted(medicinaTrabajoRecords.map((row) => row.contract)),
       linkType: uniqueSorted(medicinaTrabajoRecords.map((row) => row.linkType)),
-      examStatus: uniqueSorted(medicinaTrabajoRecords.map((row) => row.examStatus)),
+      examStatus: uniqueSorted(medicinaTrabajoRecords.map((row) => normalizeMedicinaExamStatus(row.examStatus))),
       ips: uniqueSorted(medicinaTrabajoRecords.map((row) => row.ips)),
       role: uniqueSorted(medicinaTrabajoRecords.map((row) => row.role))
     };
   }, [medicinaTrabajoRecords]);
+
+  const accidentalidadDbFilterOptions = useMemo(() => {
+    const uniqueSorted = (values: string[]) =>
+      Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, 'es', { sensitivity: 'base' })
+      );
+
+    return {
+      eventDate: uniqueSorted(accidentalidadRecords.map((row) => row.eventDate)),
+      reportDate: uniqueSorted(accidentalidadRecords.map((row) => row.reportDate)),
+      cedula: uniqueSorted(accidentalidadRecords.map((row) => row.cedula)),
+      employeeName: uniqueSorted(accidentalidadRecords.map((row) => row.employeeName)),
+      client: uniqueSorted(accidentalidadRecords.map((row) => row.client)),
+      linkType: uniqueSorted(accidentalidadRecords.map((row) => row.linkType)),
+      contractType: uniqueSorted(accidentalidadRecords.map((row) => row.contractType)),
+      characteristic: uniqueSorted(accidentalidadRecords.map((row) => row.characteristic)),
+      severity: uniqueSorted(accidentalidadRecords.map((row) => row.severity)),
+      duringService: uniqueSorted(accidentalidadRecords.map((row) => row.duringService)),
+      riskDescription: uniqueSorted(accidentalidadRecords.map((row) => row.riskDescription))
+    };
+  }, [accidentalidadRecords]);
 
   const handleServiceMenuItemClick = (item: (typeof serviceMenuItems)[number]) => {
     setSelectedServiceMenuItem(item);
@@ -3731,13 +3780,13 @@ export default function App() {
     setMedicinaForm({
       documento: row.documento,
       employeeName: row.employeeName,
-      city: row.city,
+      city: normalizeMedicinaCity(row.city),
       role: row.role,
       entryDate: row.entryDate,
       contract: row.contract,
       linkType: row.linkType,
       examDate: row.examDate,
-      examStatus: row.examStatus,
+      examStatus: normalizeMedicinaExamStatus(row.examStatus),
       postIncapacidad: row.postIncapacidad,
       ips: row.ips,
       cost: row.cost ? String(row.cost) : '',
@@ -3764,7 +3813,7 @@ export default function App() {
       id: nextId,
       documento: medicinaForm.documento.trim(),
       employeeName: medicinaForm.employeeName.trim(),
-      city: medicinaForm.city.trim(),
+      city: normalizeMedicinaCity(medicinaForm.city.trim()),
       role: medicinaForm.role.trim(),
       entryDate: validEntry ? validEntry.toISOString().slice(0, 10) : medicinaForm.entryDate,
       entryDateLabel: validEntry ? formatShortDate(validEntry) : medicinaForm.entryDate.trim(),
@@ -3774,7 +3823,7 @@ export default function App() {
       examDateLabel: validExam ? formatShortDate(validExam) : medicinaForm.examDate.trim(),
       examMonth: validExam ? validExam.getMonth() + 1 : 0,
       examYear: validExam ? validExam.getFullYear() : 0,
-      examStatus: medicinaForm.examStatus.trim(),
+      examStatus: normalizeMedicinaExamStatus(medicinaForm.examStatus.trim()),
       postIncapacidad: medicinaForm.postIncapacidad.trim(),
       ips: medicinaForm.ips.trim(),
       cost: Number(medicinaForm.cost) || 0,
@@ -8578,7 +8627,7 @@ export default function App() {
                         Restaurar BD inicial
                       </button>
                       <div className="text-[11px] text-gray-500">
-                        {accidentalidadFilteredRecords.length} registro(s)
+                        {accidentalidadDbDisplayRecords.length} registro(s)
                       </div>
                     </div>
                   </div>
@@ -8601,37 +8650,37 @@ export default function App() {
                         </tr>
                         <tr className="border-t border-[#eef1f5] bg-[#f8f9fa]">
                           <th className="px-2 py-2">
-                            <input type="date" value={accidentalidadForm.eventDate} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, eventDate: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                            <input type="date" list="acc-event-date-options" value={accidentalidadForm.eventDate} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, eventDate: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
                           </th>
                           <th className="px-2 py-2">
-                            <input type="date" value={accidentalidadForm.reportDate} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, reportDate: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                            <input type="date" list="acc-report-date-options" value={accidentalidadForm.reportDate} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, reportDate: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
                           </th>
                           <th className="px-2 py-2">
-                            <input value={accidentalidadForm.cedula} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, cedula: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                            <input list="acc-cedula-options" value={accidentalidadForm.cedula} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, cedula: e.target.value }))} placeholder="Cédula" className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
                           </th>
                           <th className="px-2 py-2">
-                            <input value={accidentalidadForm.employeeName} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, employeeName: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                            <input list="acc-employee-options" value={accidentalidadForm.employeeName} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, employeeName: e.target.value }))} placeholder="Empleado" className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
                           </th>
                           <th className="px-2 py-2">
-                            <input value={accidentalidadForm.client} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, client: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                            <input list="acc-client-options" value={accidentalidadForm.client} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, client: e.target.value }))} placeholder="Cliente" className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
                           </th>
                           <th className="px-2 py-2">
-                            <input value={accidentalidadForm.linkType} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, linkType: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                            <input list="acc-linktype-options" value={accidentalidadForm.linkType} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, linkType: e.target.value }))} placeholder="Vinculación" className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
                           </th>
                           <th className="px-2 py-2">
-                            <input value={accidentalidadForm.contractType} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, contractType: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                            <input list="acc-contracttype-options" value={accidentalidadForm.contractType} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, contractType: e.target.value }))} placeholder="Contratación" className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
                           </th>
                           <th className="px-2 py-2">
-                            <input value={accidentalidadForm.characteristic} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, characteristic: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                            <input list="acc-characteristic-options" value={accidentalidadForm.characteristic} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, characteristic: e.target.value }))} placeholder="Característica" className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
                           </th>
                           <th className="px-2 py-2">
-                            <input value={accidentalidadForm.severity} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, severity: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                            <input list="acc-severity-options" value={accidentalidadForm.severity} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, severity: e.target.value }))} placeholder="Gravedad" className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
                           </th>
                           <th className="px-2 py-2">
-                            <input value={accidentalidadForm.duringService} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, duringService: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                            <input list="acc-duringservice-options" value={accidentalidadForm.duringService} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, duringService: e.target.value }))} placeholder="Durante servicio" className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
                           </th>
                           <th className="px-2 py-2">
-                            <input value={accidentalidadForm.riskDescription} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, riskDescription: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
+                            <input list="acc-risk-options" value={accidentalidadForm.riskDescription} onChange={(e) => setAccidentalidadForm((prev) => ({ ...prev, riskDescription: e.target.value }))} placeholder="Descripción riesgo" className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" />
                           </th>
                           <th className="px-2 py-2 whitespace-nowrap">
                             <button type="button" onClick={handleAccidentalidadFormSubmit} className="px-2 py-1 rounded-soft bg-[#006b3d] text-white font-semibold mr-1">
@@ -8646,7 +8695,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#eef1f5]">
-                        {accidentalidadFilteredRecords.slice(0, 250).map((row) => (
+                        {accidentalidadDbDisplayRecords.slice(0, 250).map((row) => (
                           <tr key={row.id}>
                             <td className="px-3 py-2">{row.eventDateLabel}</td>
                             <td className="px-3 py-2">{row.reportDateLabel}</td>
@@ -8668,11 +8717,44 @@ export default function App() {
                         ))}
                       </tbody>
                     </table>
-                    {accidentalidadFilteredRecords.length > 250 && (
+                    {accidentalidadDbDisplayRecords.length > 250 && (
                       <p className="text-[11px] text-gray-500 px-3 py-2 border-t border-[#eaecf0]">
-                        Mostrando 250 de {accidentalidadFilteredRecords.length} registros. Use filtros de año o fechas para acotar la vista.
+                        Mostrando 250 de {accidentalidadDbDisplayRecords.length} registros. Use filtros de año, fechas o columnas para acotar la vista.
                       </p>
                     )}
+                    <datalist id="acc-event-date-options">
+                      {accidentalidadDbFilterOptions.eventDate.map((option) => <option key={`acc-event-date-${option}`} value={option} />)}
+                    </datalist>
+                    <datalist id="acc-report-date-options">
+                      {accidentalidadDbFilterOptions.reportDate.map((option) => <option key={`acc-report-date-${option}`} value={option} />)}
+                    </datalist>
+                    <datalist id="acc-cedula-options">
+                      {accidentalidadDbFilterOptions.cedula.map((option) => <option key={`acc-cedula-${option}`} value={option} />)}
+                    </datalist>
+                    <datalist id="acc-employee-options">
+                      {accidentalidadDbFilterOptions.employeeName.map((option) => <option key={`acc-employee-${option}`} value={option} />)}
+                    </datalist>
+                    <datalist id="acc-client-options">
+                      {accidentalidadDbFilterOptions.client.map((option) => <option key={`acc-client-${option}`} value={option} />)}
+                    </datalist>
+                    <datalist id="acc-linktype-options">
+                      {accidentalidadDbFilterOptions.linkType.map((option) => <option key={`acc-linktype-${option}`} value={option} />)}
+                    </datalist>
+                    <datalist id="acc-contracttype-options">
+                      {accidentalidadDbFilterOptions.contractType.map((option) => <option key={`acc-contracttype-${option}`} value={option} />)}
+                    </datalist>
+                    <datalist id="acc-characteristic-options">
+                      {accidentalidadDbFilterOptions.characteristic.map((option) => <option key={`acc-characteristic-${option}`} value={option} />)}
+                    </datalist>
+                    <datalist id="acc-severity-options">
+                      {accidentalidadDbFilterOptions.severity.map((option) => <option key={`acc-severity-${option}`} value={option} />)}
+                    </datalist>
+                    <datalist id="acc-duringservice-options">
+                      {accidentalidadDbFilterOptions.duringService.map((option) => <option key={`acc-duringservice-${option}`} value={option} />)}
+                    </datalist>
+                    <datalist id="acc-risk-options">
+                      {accidentalidadDbFilterOptions.riskDescription.map((option) => <option key={`acc-risk-${option}`} value={option} />)}
+                    </datalist>
                   </div>
                 </div>
               )}
@@ -8794,12 +8876,12 @@ export default function App() {
                             <tr key={row.id} className={expiryStyles.bg}>
                               <td className="px-2 py-2 font-mono">{row.documento}</td>
                               <td className="px-2 py-2">{row.employeeName}</td>
-                              <td className="px-2 py-2">{row.city}</td>
+                              <td className="px-2 py-2">{normalizeMedicinaCity(row.city)}</td>
                               <td className="px-2 py-2">{row.role}</td>
                               <td className="px-2 py-2 max-w-[140px] truncate" title={row.contract}>{row.contract}</td>
                               <td className="px-2 py-2">{row.linkType}</td>
                               <td className="px-2 py-2">{row.examDateLabel}</td>
-                              <td className="px-2 py-2">{row.examStatus}</td>
+                              <td className="px-2 py-2">{normalizeMedicinaExamStatus(row.examStatus)}</td>
                               <td className="px-2 py-2">{row.expiryDateLabel}</td>
                               <td className="px-2 py-2">{row.ips}</td>
                               <td className="px-2 py-2 font-mono">{formatMedicinaCurrency(row.cost)}</td>
