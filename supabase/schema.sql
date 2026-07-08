@@ -355,8 +355,23 @@ create policy "sgi_users_insert_self_viewer"
 
 create policy "sgi_users_update_own"
   on public.sgi_app_users for update to authenticated
-  using (lower(email) = public.current_sgi_email())
-  with check (lower(email) = public.current_sgi_email());
+  using (
+    lower(email) = public.current_sgi_email()
+    and is_active = true
+  )
+  with check (
+    lower(email) = public.current_sgi_email()
+    and role = (
+      select u.role
+      from public.sgi_app_users u
+      where lower(u.email) = public.current_sgi_email()
+    )
+    and is_active = (
+      select u.is_active
+      from public.sgi_app_users u
+      where lower(u.email) = public.current_sgi_email()
+    )
+  );
 
 -- sgi_datasets policies
 drop policy if exists "anon_select_sgi_datasets" on public.sgi_datasets;
@@ -364,15 +379,26 @@ drop policy if exists "anon_insert_sgi_datasets" on public.sgi_datasets;
 drop policy if exists "anon_update_sgi_datasets" on public.sgi_datasets;
 drop policy if exists "sgi_datasets_select_active" on public.sgi_datasets;
 drop policy if exists "sgi_datasets_write_editors" on public.sgi_datasets;
+drop policy if exists "sgi_datasets_insert_editors" on public.sgi_datasets;
+drop policy if exists "sgi_datasets_update_editors" on public.sgi_datasets;
+drop policy if exists "sgi_datasets_delete_editors" on public.sgi_datasets;
 
 create policy "sgi_datasets_select_active"
   on public.sgi_datasets for select to authenticated
   using (public.is_active_sgi_user());
 
-create policy "sgi_datasets_write_editors"
-  on public.sgi_datasets for all to authenticated
+create policy "sgi_datasets_insert_editors"
+  on public.sgi_datasets for insert to authenticated
+  with check (public.can_edit_sgi_datasets());
+
+create policy "sgi_datasets_update_editors"
+  on public.sgi_datasets for update to authenticated
   using (public.can_edit_sgi_datasets())
   with check (public.can_edit_sgi_datasets());
+
+create policy "sgi_datasets_delete_editors"
+  on public.sgi_datasets for delete to authenticated
+  using (public.can_edit_sgi_datasets());
 
 -- Legacy table: bloquear acceso anon
 drop policy if exists "anon_select_registered_users" on public.registered_users;

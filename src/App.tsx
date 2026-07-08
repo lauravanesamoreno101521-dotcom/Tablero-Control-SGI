@@ -141,6 +141,16 @@ import {
   type MedicinaTrabajoRecord
 } from './medicinaTrabajoDemo.ts';
 import MedicinaTrabajoSection from './components/MedicinaTrabajoSection.tsx';
+import AuditoriasSection, { type AuditoriaBdPanel } from './components/AuditoriasSection.tsx';
+import auditoriasInternaBdRaw from './auditoriasInternaBdData.json';
+import auditoriasExternaBdRaw from './auditoriasExternaBdData.json';
+import {
+  buildAuditoriaIndicators,
+  filterAuditoriaExternaRecords,
+  filterAuditoriaInternaRecords,
+  type AuditoriaExternaRecord,
+  type AuditoriaInternaRecord
+} from './auditoriasDemo.ts';
 
 type IncapInformeByYear = Record<string, unknown[][]>;
 
@@ -884,7 +894,8 @@ export default function App() {
     'Medicina del trabajo',
     'Comportamientos inseguros',
     'Incapacidades',
-    'Formación'
+    'Formación',
+    'Auditorías internas / externas'
   ] as const;
 
   // State for operational database
@@ -928,6 +939,26 @@ export default function App() {
   const [medicinaMonthFilter, setMedicinaMonthFilter] = useState('');
   const [medicinaCityFilter, setMedicinaCityFilter] = useState('');
   const [medicinaAlertFilter, setMedicinaAlertFilter] = useState<'all' | 'vencido' | 'este_mes' | 'proximo_mes'>('all');
+  const [auditoriasYearFilter, setAuditoriasYearFilter] = useState('');
+  const [auditoriasEntityFilter, setAuditoriasEntityFilter] = useState('');
+  const [auditoriasDemoPanel, setAuditoriasDemoPanel] = useState<AuditoriaBdPanel>('interna');
+  const [editingAuditoriaInternaId, setEditingAuditoriaInternaId] = useState<string | null>(null);
+  const [editingAuditoriaExternaId, setEditingAuditoriaExternaId] = useState<string | null>(null);
+  const [auditoriaInternaForm, setAuditoriaInternaForm] = useState({
+    eventDate: '',
+    entity: 'Emprestur',
+    process: '',
+    actionType: '',
+    openActions: '',
+    closedActions: ''
+  });
+  const [auditoriaExternaForm, setAuditoriaExternaForm] = useState({
+    eventDate: '',
+    entity: '',
+    totalFindings: '',
+    closedFindings: '',
+    score: ''
+  });
   const sgiDonutRef = useRef<HTMLDivElement | null>(null);
   const supabaseSyncReadyRef = useRef(false);
   const [authBootstrapping, setAuthBootstrapping] = useState(() => isSupabaseConfigured());
@@ -1362,6 +1393,21 @@ export default function App() {
 
   const [accidentalidadRecords, setAccidentalidadRecords] = useState<AccidentalidadRecord[]>(
     () => initialAccidentalidadRecords
+  );
+
+  const initialAuditoriaInternaRecords = useMemo((): AuditoriaInternaRecord[] => {
+    return (Array.isArray(auditoriasInternaBdRaw) ? auditoriasInternaBdRaw : []) as AuditoriaInternaRecord[];
+  }, []);
+
+  const initialAuditoriaExternaRecords = useMemo((): AuditoriaExternaRecord[] => {
+    return (Array.isArray(auditoriasExternaBdRaw) ? auditoriasExternaBdRaw : []) as AuditoriaExternaRecord[];
+  }, []);
+
+  const [auditoriaInternaRecords, setAuditoriaInternaRecords] = useState<AuditoriaInternaRecord[]>(
+    () => initialAuditoriaInternaRecords
+  );
+  const [auditoriaExternaRecords, setAuditoriaExternaRecords] = useState<AuditoriaExternaRecord[]>(
+    () => initialAuditoriaExternaRecords
   );
 
   const initialMedicinaTrabajoRecords = useMemo((): MedicinaTrabajoRecord[] => {
@@ -3193,6 +3239,13 @@ export default function App() {
         { id: '4', label: 'Asistencia y evaluación' }
       ] as const;
     }
+    if (selectedServiceMenuItem === 'Auditorías internas / externas') {
+      return [
+        { id: '1', label: 'Detalle general' },
+        { id: '2', label: 'Por proceso y entidad' },
+        { id: '3', label: 'Consolidado y seguimiento' }
+      ] as const;
+    }
     return [
       { id: '1', label: '1' },
       { id: '2', label: '2' },
@@ -3389,6 +3442,50 @@ export default function App() {
       return;
     }
 
+    if (selectedServiceMenuItem === 'Auditorías internas / externas') {
+      if (auditoriasFilteredInternaRecords.length === 0 && auditoriasFilteredExternaRecords.length === 0) {
+        alert('No hay registros de auditorías para exportar con el filtro actual.');
+        return;
+      }
+
+      const workbook = XLSX.utils.book_new();
+
+      if (auditoriasFilteredInternaRecords.length > 0) {
+        const internaRows = auditoriasFilteredInternaRecords.map((row) => ({
+          Tipo: row.auditType,
+          Fecha: row.eventDateLabel || row.eventDate,
+          Entidad: row.entity,
+          Proceso: row.process,
+          Acción: row.actionType,
+          'Total Acciones Abiertas': row.openActions,
+          'Total Acciones Cerradas': row.closedActions
+        }));
+        const internaSheet = XLSX.utils.json_to_sheet(internaRows);
+        internaSheet['!autofilter'] = { ref: 'A1:G1' };
+        XLSX.utils.book_append_sheet(workbook, internaSheet, 'CONSOLIDADO_AUDITORIA_INTERNA');
+      }
+
+      if (auditoriasFilteredExternaRecords.length > 0) {
+        const externaRows = auditoriasFilteredExternaRecords.map((row) => ({
+          Tipo: row.auditType,
+          Fecha: row.eventDateLabel || row.eventDate,
+          Entidad: row.entity,
+          '# TOTAL DE HALLAZGOS': row.totalFindings,
+          '# TOTAL DE HALLAZGOS CERRADOS': row.closedFindings,
+          PUNTAJE: row.score
+        }));
+        const externaSheet = XLSX.utils.json_to_sheet(externaRows);
+        externaSheet['!autofilter'] = { ref: 'A1:F1' };
+        XLSX.utils.book_append_sheet(workbook, externaSheet, 'CONSOLIDADO AUDITORIAS EXTERNAS');
+      }
+
+      XLSX.writeFile(
+        workbook,
+        `reporte_auditorias_${auditoriasYearFilter || 'todos'}_${dateSuffix}.xlsx`
+      );
+      return;
+    }
+
     if (sstFilteredVisits.length === 0) {
       alert('No hay registros para exportar con el filtro actual.');
       return;
@@ -3483,6 +3580,91 @@ export default function App() {
     };
   }, [accidentalidadRecords]);
 
+  const auditoriasYearOptions = useMemo(() => {
+    return Array.from(
+      new Set([
+        ...auditoriaInternaRecords.map((row) => row.year),
+        ...auditoriaExternaRecords.map((row) => row.year)
+      ].filter((year) => year > 0))
+    ).sort((a, b) => Number(b) - Number(a));
+  }, [auditoriaInternaRecords, auditoriaExternaRecords]);
+
+  const auditoriasEntityOptions = useMemo(() => {
+    return Array.from(
+      new Set([
+        ...auditoriaInternaRecords.map((row) => row.entity),
+        ...auditoriaExternaRecords.map((row) => row.entity)
+      ].filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+  }, [auditoriaInternaRecords, auditoriaExternaRecords]);
+
+  const auditoriasFilteredInternaRecords = useMemo(() => {
+    return filterAuditoriaInternaRecords(auditoriaInternaRecords, {
+      yearFilter: auditoriasYearFilter,
+      startDate: sgiStartDate,
+      endDate: sgiEndDate,
+      entityFilter: auditoriasEntityFilter
+    });
+  }, [auditoriaInternaRecords, auditoriasYearFilter, sgiStartDate, sgiEndDate, auditoriasEntityFilter]);
+
+  const auditoriasFilteredExternaRecords = useMemo(() => {
+    return filterAuditoriaExternaRecords(auditoriaExternaRecords, {
+      yearFilter: auditoriasYearFilter,
+      startDate: sgiStartDate,
+      endDate: sgiEndDate,
+      entityFilter: auditoriasEntityFilter
+    });
+  }, [auditoriaExternaRecords, auditoriasYearFilter, sgiStartDate, sgiEndDate, auditoriasEntityFilter]);
+
+  const auditoriasTrendInternaRecords = useMemo(() => {
+    return filterAuditoriaInternaRecords(auditoriaInternaRecords, {
+      startDate: sgiStartDate,
+      endDate: sgiEndDate,
+      entityFilter: auditoriasEntityFilter
+    });
+  }, [auditoriaInternaRecords, sgiStartDate, sgiEndDate, auditoriasEntityFilter]);
+
+  const auditoriasTrendExternaRecords = useMemo(() => {
+    return filterAuditoriaExternaRecords(auditoriaExternaRecords, {
+      startDate: sgiStartDate,
+      endDate: sgiEndDate,
+      entityFilter: auditoriasEntityFilter
+    });
+  }, [auditoriaExternaRecords, sgiStartDate, sgiEndDate, auditoriasEntityFilter]);
+
+  const auditoriasIndicators = useMemo(() => {
+    return buildAuditoriaIndicators(auditoriasFilteredInternaRecords, auditoriasFilteredExternaRecords);
+  }, [auditoriasFilteredInternaRecords, auditoriasFilteredExternaRecords]);
+
+  const auditoriasTrendYear = useMemo(() => {
+    if (auditoriasYearFilter) return Number(auditoriasYearFilter);
+    return auditoriasYearOptions[0] ?? new Date().getFullYear();
+  }, [auditoriasYearFilter, auditoriasYearOptions]);
+
+  const auditoriasInternaFilterOptions = useMemo(() => {
+    const uniqueSorted = (values: string[]) =>
+      Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, 'es', { sensitivity: 'base' })
+      );
+    return {
+      process: uniqueSorted(auditoriaInternaRecords.map((row) => row.process)),
+      actionType: uniqueSorted(auditoriaInternaRecords.map((row) => row.actionType)),
+      entity: uniqueSorted(auditoriaInternaRecords.map((row) => row.entity)),
+      eventDate: uniqueSorted(auditoriaInternaRecords.map((row) => row.eventDate))
+    };
+  }, [auditoriaInternaRecords]);
+
+  const auditoriasExternaFilterOptions = useMemo(() => {
+    const uniqueSorted = (values: string[]) =>
+      Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, 'es', { sensitivity: 'base' })
+      );
+    return {
+      entity: uniqueSorted(auditoriaExternaRecords.map((row) => row.entity)),
+      eventDate: uniqueSorted(auditoriaExternaRecords.map((row) => row.eventDate))
+    };
+  }, [auditoriaExternaRecords]);
+
   const handleServiceMenuItemClick = (item: (typeof serviceMenuItems)[number]) => {
     setSelectedServiceMenuItem(item);
     setActiveTab('sgi');
@@ -3507,6 +3689,10 @@ export default function App() {
       setMedicinaCityFilter('');
       setMedicinaMonthFilter('');
       setMedicinaAlertFilter('all');
+    }
+    if (item !== 'Auditorías internas / externas') {
+      setAuditoriasYearFilter('');
+      setAuditoriasEntityFilter('');
     }
   };
 
@@ -3676,6 +3862,136 @@ export default function App() {
     setSgiStartDate('');
     setSgiEndDate('');
     setAccidentalidadYearFilter('');
+  };
+
+  const resetAuditoriaInternaForm = () => {
+    setAuditoriaInternaForm({
+      eventDate: '',
+      entity: 'Emprestur',
+      process: '',
+      actionType: '',
+      openActions: '',
+      closedActions: ''
+    });
+    setEditingAuditoriaInternaId(null);
+  };
+
+  const resetAuditoriaExternaForm = () => {
+    setAuditoriaExternaForm({
+      eventDate: '',
+      entity: '',
+      totalFindings: '',
+      closedFindings: '',
+      score: ''
+    });
+    setEditingAuditoriaExternaId(null);
+  };
+
+  const handleAuditoriaInternaSubmit = () => {
+    if (!auditoriaInternaForm.eventDate || !auditoriaInternaForm.process.trim()) {
+      alert('Completa fecha y proceso para registrar la auditoría interna.');
+      return;
+    }
+    const eventDate = new Date(`${auditoriaInternaForm.eventDate}T00:00:00`);
+    if (Number.isNaN(eventDate.getTime())) {
+      alert('La fecha no es válida.');
+      return;
+    }
+    const nextRecord: AuditoriaInternaRecord = {
+      id: editingAuditoriaInternaId ?? `aud-int-${Date.now()}`,
+      auditType: 'Interna',
+      eventDate: eventDate.toISOString().slice(0, 10),
+      eventDateLabel: formatShortDate(eventDate),
+      month: eventDate.getMonth() + 1,
+      year: eventDate.getFullYear(),
+      entity: auditoriaInternaForm.entity.trim() || 'Emprestur',
+      process: auditoriaInternaForm.process.trim(),
+      actionType: auditoriaInternaForm.actionType.trim(),
+      openActions: Number(auditoriaInternaForm.openActions) || 0,
+      closedActions: Number(auditoriaInternaForm.closedActions) || 0
+    };
+    if (editingAuditoriaInternaId) {
+      setAuditoriaInternaRecords((prev) => prev.map((row) => (row.id === editingAuditoriaInternaId ? nextRecord : row)));
+    } else {
+      setAuditoriaInternaRecords((prev) => [nextRecord, ...prev]);
+    }
+    resetAuditoriaInternaForm();
+  };
+
+  const handleAuditoriaExternaSubmit = () => {
+    if (!auditoriaExternaForm.eventDate || !auditoriaExternaForm.entity.trim()) {
+      alert('Completa fecha y entidad para registrar la auditoría externa.');
+      return;
+    }
+    const eventDate = new Date(`${auditoriaExternaForm.eventDate}T00:00:00`);
+    if (Number.isNaN(eventDate.getTime())) {
+      alert('La fecha no es válida.');
+      return;
+    }
+    const nextRecord: AuditoriaExternaRecord = {
+      id: editingAuditoriaExternaId ?? `aud-ext-${Date.now()}`,
+      auditType: 'Externa',
+      eventDate: eventDate.toISOString().slice(0, 10),
+      eventDateLabel: formatShortDate(eventDate),
+      month: eventDate.getMonth() + 1,
+      year: eventDate.getFullYear(),
+      entity: auditoriaExternaForm.entity.trim(),
+      totalFindings: Number(auditoriaExternaForm.totalFindings) || 0,
+      closedFindings: Number(auditoriaExternaForm.closedFindings) || 0,
+      score: Number(auditoriaExternaForm.score) || 0
+    };
+    if (editingAuditoriaExternaId) {
+      setAuditoriaExternaRecords((prev) => prev.map((row) => (row.id === editingAuditoriaExternaId ? nextRecord : row)));
+    } else {
+      setAuditoriaExternaRecords((prev) => [nextRecord, ...prev]);
+    }
+    resetAuditoriaExternaForm();
+  };
+
+  const handleEditAuditoriaInternaRecord = (row: AuditoriaInternaRecord) => {
+    setEditingAuditoriaInternaId(row.id);
+    setAuditoriaInternaForm({
+      eventDate: row.eventDate,
+      entity: row.entity,
+      process: row.process,
+      actionType: row.actionType,
+      openActions: String(row.openActions),
+      closedActions: String(row.closedActions)
+    });
+  };
+
+  const handleEditAuditoriaExternaRecord = (row: AuditoriaExternaRecord) => {
+    setEditingAuditoriaExternaId(row.id);
+    setAuditoriaExternaForm({
+      eventDate: row.eventDate,
+      entity: row.entity,
+      totalFindings: String(row.totalFindings),
+      closedFindings: String(row.closedFindings),
+      score: String(row.score)
+    });
+  };
+
+  const restoreAuditoriasInitialData = () => {
+    const confirmed = window.confirm(
+      '¿Restaurar la base de datos al ejemplo inicial? Se eliminarán los registros agregados o editados en esta sesión.'
+    );
+    if (!confirmed) return;
+    setAuditoriaInternaRecords(initialAuditoriaInternaRecords.map((row) => ({ ...row })));
+    setAuditoriaExternaRecords(initialAuditoriaExternaRecords.map((row) => ({ ...row })));
+    resetAuditoriaInternaForm();
+    resetAuditoriaExternaForm();
+  };
+
+  const handleDeleteAuditoriaInternaRecord = (id: string) => {
+    if (!window.confirm('¿Eliminar este registro de auditoría interna?')) return;
+    setAuditoriaInternaRecords((prev) => prev.filter((row) => row.id !== id));
+    if (editingAuditoriaInternaId === id) resetAuditoriaInternaForm();
+  };
+
+  const handleDeleteAuditoriaExternaRecord = (id: string) => {
+    if (!window.confirm('¿Eliminar este registro de auditoría externa?')) return;
+    setAuditoriaExternaRecords((prev) => prev.filter((row) => row.id !== id));
+    if (editingAuditoriaExternaId === id) resetAuditoriaExternaForm();
   };
 
   const handleEditAccidentalidadRecord = (row: AccidentalidadRecord) => {
@@ -5895,8 +6211,35 @@ export default function App() {
             <div className="bg-white border border-[#eaecf0] rounded-soft p-4 shadow-sm space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Medicina del trabajo' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && sgiCanEditDatasets && (
-                  selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación' || selectedServiceMenuItem === 'Accidentalidad' ? (
+                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Medicina del trabajo' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación' || selectedServiceMenuItem === 'Auditorías internas / externas') && sgiCanEditDatasets && (
+                  selectedServiceMenuItem === 'Auditorías internas / externas' ? (
+                    <div className="flex flex-wrap gap-2">
+                      {(['interna', 'externa', 'informe'] as const).map((panel) => (
+                        <button
+                          key={panel}
+                          onClick={() => {
+                            if (showDbDetailPanel && auditoriasDemoPanel === panel) {
+                              setShowDbDetailPanel(false);
+                              return;
+                            }
+                            setShowDbDetailPanel(true);
+                            setAuditoriasDemoPanel(panel);
+                          }}
+                          className={`px-3 py-2 rounded-soft text-xs font-semibold border transition-colors ${
+                            showDbDetailPanel && auditoriasDemoPanel === panel
+                              ? 'border-[#00502c] bg-[#00502c] text-white'
+                              : 'border-[#d6dce5] bg-white text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          {panel === 'interna'
+                            ? 'Ingreso BD interna'
+                            : panel === 'externa'
+                              ? 'Ingreso BD externa'
+                              : 'Informe consolidado'}
+                        </button>
+                      ))}
+                    </div>
+                  ) : selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación' || selectedServiceMenuItem === 'Accidentalidad' ? (
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() => {
@@ -5976,7 +6319,7 @@ export default function App() {
                   </button>
                   )
                 )}
-                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Medicina del trabajo' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && (
+                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Medicina del trabajo' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación' || selectedServiceMenuItem === 'Auditorías internas / externas') && (
                   <button
                     onClick={handleDownloadSgiReport}
                     className="px-3 py-2 rounded-soft text-xs font-semibold border border-[#006b3d] bg-[#006b3d] text-white hover:bg-[#00502c] transition-colors"
@@ -5986,7 +6329,7 @@ export default function App() {
                 )}
                 </div>
 
-                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Medicina del trabajo' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación') && (
+                {(selectedServiceMenuItem === 'Acompañamiento presencial' || selectedServiceMenuItem === 'Accidentalidad' || selectedServiceMenuItem === 'Medicina del trabajo' || selectedServiceMenuItem === 'Comportamientos inseguros' || selectedServiceMenuItem === 'Incapacidades' || selectedServiceMenuItem === 'Formación' || selectedServiceMenuItem === 'Auditorías internas / externas') && (
                   <div className="flex flex-wrap items-center gap-2">
                     {selectedServiceMenuItem === 'Comportamientos inseguros' && (
                       <select
@@ -6071,6 +6414,30 @@ export default function App() {
                           <option key={`formacion-year-${year}`} value={year}>{year}</option>
                         ))}
                       </select>
+                    )}
+                    {selectedServiceMenuItem === 'Auditorías internas / externas' && (
+                      <>
+                        <select
+                          value={auditoriasYearFilter}
+                          onChange={(e) => setAuditoriasYearFilter(e.target.value)}
+                          className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                        >
+                          <option value="">Todos los años</option>
+                          {auditoriasYearOptions.map((year) => (
+                            <option key={`aud-year-${year}`} value={year}>{year}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={auditoriasEntityFilter}
+                          onChange={(e) => setAuditoriasEntityFilter(e.target.value)}
+                          className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white max-w-[180px]"
+                        >
+                          <option value="">Todas las entidades</option>
+                          {auditoriasEntityOptions.map((entity) => (
+                            <option key={`aud-entity-${entity}`} value={entity}>{entity}</option>
+                          ))}
+                        </select>
+                      </>
                     )}
                     <input
                       type="date"
@@ -7621,7 +7988,72 @@ export default function App() {
                   )}
                 </>
               )}
+              {selectedServiceMenuItem === 'Auditorías internas / externas' && (
+                <AuditoriasSection
+                  subIndicator={sgiSubIndicator}
+                  indicators={auditoriasIndicators}
+                  internaRecords={auditoriasFilteredInternaRecords}
+                  externaRecords={auditoriasFilteredExternaRecords}
+                  trendInternaRecords={auditoriasTrendInternaRecords}
+                  trendExternaRecords={auditoriasTrendExternaRecords}
+                  trendYear={auditoriasTrendYear}
+                  yearFilter={auditoriasYearFilter}
+                  showDbDetailPanel={false}
+                  demoPanel={auditoriasDemoPanel}
+                  canEdit={sgiCanEditDatasets}
+                  internaForm={auditoriaInternaForm}
+                  externaForm={auditoriaExternaForm}
+                  editingInternaId={editingAuditoriaInternaId}
+                  editingExternaId={editingAuditoriaExternaId}
+                  onInternaFormChange={(patch) => setAuditoriaInternaForm((prev) => ({ ...prev, ...patch }))}
+                  onExternaFormChange={(patch) => setAuditoriaExternaForm((prev) => ({ ...prev, ...patch }))}
+                  onSubmitInterna={handleAuditoriaInternaSubmit}
+                  onSubmitExterna={handleAuditoriaExternaSubmit}
+                  onResetInternaForm={resetAuditoriaInternaForm}
+                  onResetExternaForm={resetAuditoriaExternaForm}
+                  onEditInterna={handleEditAuditoriaInternaRecord}
+                  onEditExterna={handleEditAuditoriaExternaRecord}
+                  onDeleteInterna={handleDeleteAuditoriaInternaRecord}
+                  onDeleteExterna={handleDeleteAuditoriaExternaRecord}
+                  onRestoreInitial={restoreAuditoriasInitialData}
+                  internaFilterOptions={auditoriasInternaFilterOptions}
+                  externaFilterOptions={auditoriasExternaFilterOptions}
+                />
+              )}
                 </>
+              )}
+
+              {selectedServiceMenuItem === 'Auditorías internas / externas' && showDbDetailPanel && (
+                <AuditoriasSection
+                  subIndicator={sgiSubIndicator}
+                  indicators={auditoriasIndicators}
+                  internaRecords={auditoriasFilteredInternaRecords}
+                  externaRecords={auditoriasFilteredExternaRecords}
+                  trendInternaRecords={auditoriasTrendInternaRecords}
+                  trendExternaRecords={auditoriasTrendExternaRecords}
+                  trendYear={auditoriasTrendYear}
+                  yearFilter={auditoriasYearFilter}
+                  showDbDetailPanel={true}
+                  demoPanel={auditoriasDemoPanel}
+                  canEdit={sgiCanEditDatasets}
+                  internaForm={auditoriaInternaForm}
+                  externaForm={auditoriaExternaForm}
+                  editingInternaId={editingAuditoriaInternaId}
+                  editingExternaId={editingAuditoriaExternaId}
+                  onInternaFormChange={(patch) => setAuditoriaInternaForm((prev) => ({ ...prev, ...patch }))}
+                  onExternaFormChange={(patch) => setAuditoriaExternaForm((prev) => ({ ...prev, ...patch }))}
+                  onSubmitInterna={handleAuditoriaInternaSubmit}
+                  onSubmitExterna={handleAuditoriaExternaSubmit}
+                  onResetInternaForm={resetAuditoriaInternaForm}
+                  onResetExternaForm={resetAuditoriaExternaForm}
+                  onEditInterna={handleEditAuditoriaInternaRecord}
+                  onEditExterna={handleEditAuditoriaExternaRecord}
+                  onDeleteInterna={handleDeleteAuditoriaInternaRecord}
+                  onDeleteExterna={handleDeleteAuditoriaExternaRecord}
+                  onRestoreInitial={restoreAuditoriasInitialData}
+                  internaFilterOptions={auditoriasInternaFilterOptions}
+                  externaFilterOptions={auditoriasExternaFilterOptions}
+                />
               )}
 
               {!isLoadingSst && !sstLoadError && selectedServiceMenuItem === 'Acompañamiento presencial' && sgiCanEditDatasets && showDbDetailPanel && (
