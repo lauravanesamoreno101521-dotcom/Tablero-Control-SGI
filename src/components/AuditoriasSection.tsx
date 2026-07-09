@@ -117,7 +117,6 @@ export default function AuditoriasSection({
   const paretoReferenceYear = resolveAuditoriaParetoReferenceYear(trendInterna, trendExterna, yearFilter);
   const compliancePareto = buildAuditoriaCompliancePareto(complianceByAudit, paretoReferenceYear);
   const trendYears = yearlyComplianceTrend.map((point) => point.year);
-  const yearBarPalette = ['#00502c', '#006b3d', '#3d8f5f', '#7ab892', '#ffd000', '#d4a900'];
   const closureMet = indicators.closureRate >= 95;
   const scoreMet = indicators.avgExternalScore >= 0.9;
   const auditCountReferenceLabel = yearFilter
@@ -291,11 +290,7 @@ export default function AuditoriasSection({
 
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
-          <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Auditorías registradas</p>
-          <p className="text-2xl font-bold text-[#00502c] mt-1">{indicators.auditEvents}</p>
-        </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
         <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
           <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Acciones / hallazgos</p>
           <p className="text-2xl font-bold text-[#191c1d] mt-1">{indicators.openActions}</p>
@@ -411,17 +406,29 @@ export default function AuditoriasSection({
           <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
             <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">Por proceso (interna)</p>
             <div className="space-y-2">
-              {processStats.slice(0, 8).map((row) => (
+              {processStats.slice(0, 8).map((row) => {
+                const hasOpenActions = row.openTotal !== row.closedTotal;
+                const actionTotal = row.openTotal + row.closedTotal;
+                const barWidth = actionTotal > 0 ? (row.closedTotal / actionTotal) * 100 : 100;
+                const barColor = hasOpenActions ? '#d92d20' : '#006b3d';
+                return (
                 <div key={row.label} className="bg-white border border-[#eaecf0] rounded-soft p-2.5 text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold">{row.label}</span>
-                    <span className="font-mono">{row.closedTotal}/{row.total}</span>
+                    <span className={`font-mono ${hasOpenActions ? 'text-[#ba1a1a]' : 'text-[#006b3d]'}`}>
+                      {row.openTotal}/{row.closedTotal}
+                    </span>
                   </div>
+                  <p className="text-[10px] text-gray-500 mt-1">Abiertas / cerradas</p>
                   <div className="h-2 mt-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#006b3d]" style={{ width: `${row.total ? (row.closedTotal / row.total) * 100 : 0}%` }} />
+                    <div
+                      className="h-full transition-colors"
+                      style={{ width: `${barWidth}%`, backgroundColor: barColor }}
+                    />
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
           <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
@@ -486,7 +493,6 @@ export default function AuditoriasSection({
                 <div className="overflow-x-auto overflow-y-visible py-2">
                   <div className="flex gap-4 justify-between min-w-max px-1">
                     {yearlyComplianceTrend.map((point) => {
-                      const globalStyles = getAuditoriaComplianceStyles(point.globalCompliance);
                       return (
                         <div key={`year-trend-${point.year}`} className="min-w-[108px] flex flex-col items-center">
                           <div className="text-[11px] font-bold text-[#00502c] mb-1">{point.globalCompliance.toFixed(1)}%</div>
@@ -523,7 +529,7 @@ export default function AuditoriasSection({
                               }
                             )}
                           </div>
-                          <div className={`mt-2 px-2 py-1 rounded-soft border text-[11px] font-bold ${globalStyles.bg} ${globalStyles.border} ${globalStyles.text}`}>
+                          <div className="mt-2 text-[11px] font-bold text-[#191c1d]">
                             {point.year}
                           </div>
                         </div>
@@ -565,7 +571,7 @@ export default function AuditoriasSection({
                       </div>
                       <div className="overflow-x-auto">
                         <div className="flex gap-2 min-w-max items-end">
-                          {trendYears.map((year, yearIndex) => {
+                          {trendYears.map((year) => {
                             const yearPoint = audit.years.find((item) => item.year === year);
                             const compliance = yearPoint?.compliance ?? 0;
                             const hasData = Boolean(yearPoint);
@@ -586,10 +592,7 @@ export default function AuditoriasSection({
                                     title={hasData ? `${audit.label} ${year}: ${compliance.toFixed(1)}%` : `${year}: sin registro`}
                                   />
                                 </div>
-                                <div
-                                  className="mt-1 text-[10px] font-semibold"
-                                  style={{ color: yearBarPalette[yearIndex % yearBarPalette.length] }}
-                                >
+                                <div className="mt-1 text-[10px] font-semibold text-[#191c1d]">
                                   {year}
                                 </div>
                               </div>
