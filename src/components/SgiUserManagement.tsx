@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, RefreshCw, Shield, Users } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Shield, Trash2, Users } from 'lucide-react';
 import { getSgiRoleLabel, SGI_BOOTSTRAP_ADMIN_EMAIL } from '../supabase/auth.ts';
 import {
+  deleteSgiAppUserForAdmin,
   listSgiAppUsersForAdmin,
   provisionSgiUserByEmailForAdmin,
   updateSgiAppUserActiveForAdmin,
@@ -40,6 +41,7 @@ export default function SgiUserManagement({
   const [statusMessage, setStatusMessage] = useState('');
   const [syncWarning, setSyncWarning] = useState('');
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [isProvisioning, setIsProvisioning] = useState(false);
@@ -146,6 +148,34 @@ export default function SgiUserManagement({
     await loadUsers();
   };
 
+  const handleDeleteUser = async (user: SgiAppUserAdminRow) => {
+    if (user.role === 'admin') return;
+    if (user.email === currentUserEmail) {
+      setError('No puedes eliminar tu propia cuenta de administrador.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `¿Eliminar a ${user.email}?\n\nSe borrará su cuenta de acceso y podrá registrarse de nuevo con el mismo correo. Los datos del tablero SGI no se modifican.`
+    );
+    if (!confirmed) return;
+
+    setDeletingUserId(user.id);
+    setStatusMessage('');
+    setError('');
+
+    const result = await deleteSgiAppUserForAdmin(user.id);
+    if (!result.ok) {
+      setError('error' in result ? result.error : 'No se pudo eliminar el usuario.');
+    } else {
+      setUsers((prev) => prev.filter((row) => row.id !== user.id));
+      setStatusMessage(
+        `${user.email} eliminado. Ya puede volver a registrarse con el mismo correo.`
+      );
+    }
+    setDeletingUserId(null);
+  };
+
   const isBootstrapAdmin =
     currentUserEmail.trim().toLowerCase() === SGI_BOOTSTRAP_ADMIN_EMAIL;
 
@@ -167,7 +197,8 @@ export default function SgiUserManagement({
           </h2>
           <p className="text-sm text-gray-600 mt-1">
             Asigna roles de <strong>Visualizador</strong> (solo consulta) o <strong>Editor</strong>{' '}
-            (edita bases de datos e informes). Al abrir o actualizar, se importan automáticamente
+            (edita bases de datos e informes). Puedes eliminar usuarios para que se registren de nuevo
+            sin afectar los datos del tablero. Al abrir o actualizar, se importan automáticamente
             los correos ya registrados en Authentication.
           </p>
         </div>
@@ -270,12 +301,15 @@ export default function SgiUserManagement({
                   <th className="text-left px-4 py-3 font-semibold text-gray-700">Rol</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-700">Estado</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-700">Último acceso</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {users.map((user) => {
                   const isAdminAccount = user.role === 'admin';
                   const isSaving = savingUserId === user.id;
+                  const isDeleting = deletingUserId === user.id;
+                  const isCurrentUser = user.email === currentUserEmail;
 
                   return (
                     <tr key={user.id} className="border-b border-[#f1f3f6] last:border-b-0">
@@ -320,6 +354,22 @@ export default function SgiUserManagement({
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
                         {formatDateTime(user.lastLoginAt)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {isAdminAccount || isCurrentUser ? (
+                          <span className="text-xs text-gray-400">—</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteUser(user)}
+                            disabled={isSaving || isDeleting || loading}
+                            title="Eliminar usuario y liberar correo para re-registro"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-soft border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-60"
+                          >
+                            <Trash2 size={14} />
+                            {isDeleting ? 'Eliminando...' : 'Eliminar'}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

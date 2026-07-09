@@ -208,4 +208,30 @@ export async function updateSgiAppUserActiveForAdmin(
   return { ok: true };
 }
 
+export async function deleteSgiAppUserForAdmin(
+  userId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { supabase, error: clientError } = await getAuthenticatedSupabaseClient();
+  if (!supabase || clientError) {
+    return { ok: false, error: clientError || getSupabaseSetupMessage() };
+  }
+
+  const { error } = await supabase.rpc('admin_delete_sgi_user', { p_user_id: userId });
+
+  if (error) {
+    const missingFunction =
+      error.message.includes('admin_delete_sgi_user') ||
+      error.message.includes('Could not find the function');
+
+    return {
+      ok: false,
+      error: missingFunction
+        ? 'La eliminación de usuarios aún no está instalada en Supabase. Ejecuta scripts/admin-delete-sgi-user.sql en el SQL Editor.'
+        : error.message || 'No se pudo eliminar el usuario.'
+    };
+  }
+
+  return { ok: true };
+}
+
 export { isSupabaseConfigured };
