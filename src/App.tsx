@@ -527,10 +527,32 @@ const normalizeUnsafeInfractionLocation = (value: string): string => {
   return trimmed;
 };
 
-const withNormalizedUnsafeInfractionLocation = (row: UnsafeBehaviorRecord): UnsafeBehaviorRecord => ({
-  ...row,
-  location: normalizeUnsafeInfractionLocation(row.location)
-});
+/**
+ * Corrige registros antiguos cuya "Fecha infracción" quedó guardada como el texto
+ * completo de un objeto Date (ej. "Thu Jan 26 2017 00:00:16 GMT-0500 (hora estándar de
+ * Colombia)") por un bug del importador de Excel. Si `date` ya es válida solo formatea
+ * la etiqueta; si no, intenta reconstruir la fecha a partir del texto guardado.
+ */
+const resolveUnsafeInfractionDate = (row: UnsafeBehaviorRecord): { date: Date | null; dateLabel: string } => {
+  if (row.date && !Number.isNaN(new Date(row.date).getTime())) {
+    return { date: row.date, dateLabel: formatShortDate(row.date) };
+  }
+  const parsed = parseSpanishDate(String(row.dateLabel ?? ''));
+  if (parsed) {
+    return { date: parsed, dateLabel: formatShortDate(parsed) };
+  }
+  return { date: row.date ?? null, dateLabel: row.dateLabel };
+};
+
+const withNormalizedUnsafeInfractionLocation = (row: UnsafeBehaviorRecord): UnsafeBehaviorRecord => {
+  const { date, dateLabel } = resolveUnsafeInfractionDate(row);
+  return {
+    ...row,
+    location: normalizeUnsafeInfractionLocation(row.location),
+    date,
+    dateLabel
+  };
+};
 
 const inferUnsafeRiskLevel = (amount: number, description: string): 'Alto' | 'Medio' | 'Bajo' => {
   const descriptionNorm = normalizeText(description);
@@ -3548,6 +3570,8 @@ export default function App() {
       );
 
     return {
+      documento: uniqueSorted(medicinaTrabajoRecords.map((row) => row.documento)),
+      employeeName: uniqueSorted(medicinaTrabajoRecords.map((row) => row.employeeName)),
       city: uniqueSorted(medicinaTrabajoRecords.map((row) => normalizeMedicinaCity(row.city))),
       contract: uniqueSorted(medicinaTrabajoRecords.map((row) => row.contract)),
       linkType: uniqueSorted(medicinaTrabajoRecords.map((row) => row.linkType)),
@@ -3556,6 +3580,23 @@ export default function App() {
       role: uniqueSorted(medicinaTrabajoRecords.map((row) => row.role))
     };
   }, [medicinaTrabajoRecords]);
+
+  // Filtro en vivo por Documento/Nombre para la tabla "Ingreso base de datos" de Medicina del
+  // trabajo: a medida que se escribe (parcial, sin distinguir mayúsculas/tildes) se van
+  // acotando las filas visibles hasta encontrar el registro buscado. Reutiliza los mismos
+  // campos editables del formulario de alta/edición (medicinaForm), que ya quedan libres para
+  // escribir un documento o nombre nuevo si no hay coincidencias.
+  const medicinaDbSearchFilteredRecords = useMemo(() => {
+    const documentoQuery = normalizeText(medicinaForm.documento);
+    const nombreQuery = normalizeText(medicinaForm.employeeName);
+    if (!documentoQuery && !nombreQuery) return medicinaTrabajoRecords;
+
+    return medicinaTrabajoRecords.filter((row) => {
+      if (documentoQuery && !normalizeText(row.documento).includes(documentoQuery)) return false;
+      if (nombreQuery && !normalizeText(row.employeeName).includes(nombreQuery)) return false;
+      return true;
+    });
+  }, [medicinaTrabajoRecords, medicinaForm.documento, medicinaForm.employeeName]);
 
   const accidentalidadDbFilterOptions = useMemo(() => {
     const uniqueSorted = (values: string[]) =>
@@ -9291,8 +9332,24 @@ export default function App() {
                           <th className="px-2 py-2">Acciones</th>
                         </tr>
                         <tr className="border-t border-[#eef1f5] bg-[#f8f9fa]">
-                          <th className="px-2 py-2"><input value={medicinaForm.documento} onChange={(e) => setMedicinaForm((p) => ({ ...p, documento: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
-                          <th className="px-2 py-2"><input value={medicinaForm.employeeName} onChange={(e) => setMedicinaForm((p) => ({ ...p, employeeName: e.target.value }))} className="w-full min-w-[140px] border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
+                          <th className="px-2 py-2">
+                            <input
+                              list="med-documento-options"
+                              value={medicinaForm.documento}
+                              onChange={(e) => setMedicinaForm((p) => ({ ...p, documento: e.target.value }))}
+                              placeholder="Filtrar / escribir..."
+                              className="w-full border border-[#d6dce5] rounded-soft px-2 py-1"
+                            />
+                          </th>
+                          <th className="px-2 py-2">
+                            <input
+                              list="med-nombre-options"
+                              value={medicinaForm.employeeName}
+                              onChange={(e) => setMedicinaForm((p) => ({ ...p, employeeName: e.target.value }))}
+                              placeholder="Filtrar / escribir..."
+                              className="w-full min-w-[140px] border border-[#d6dce5] rounded-soft px-2 py-1"
+                            />
+                          </th>
                           <th className="px-2 py-2"><input list="med-city-options" value={medicinaForm.city} onChange={(e) => setMedicinaForm((p) => ({ ...p, city: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
                           <th className="px-2 py-2"><input list="med-role-options" value={medicinaForm.role} onChange={(e) => setMedicinaForm((p) => ({ ...p, role: e.target.value }))} className="w-full border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
                           <th className="px-2 py-2"><input list="med-contract-options" value={medicinaForm.contract} onChange={(e) => setMedicinaForm((p) => ({ ...p, contract: e.target.value }))} className="w-full min-w-[120px] border border-[#d6dce5] rounded-soft px-2 py-1" /></th>
@@ -9322,7 +9379,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#eef1f5]">
-                        {medicinaTrabajoRecords.slice(0, 120).map((row) => {
+                        {medicinaDbSearchFilteredRecords.slice(0, 120).map((row) => {
                           const expiryStyles = getMedicinaExpiryStylesForRecord(row, medicinaReferenceDate);
                           return (
                             <tr key={row.id} className={expiryStyles.bg}>
@@ -9353,11 +9410,22 @@ export default function App() {
                       </tbody>
                     </table>
                   </div>
-                  {medicinaTrabajoRecords.length > 120 && (
+                  {(medicinaForm.documento.trim() || medicinaForm.employeeName.trim()) && (
                     <p className="text-[11px] text-gray-500 px-3 py-2 border-t border-[#eaecf0]">
-                      Mostrando 120 de {medicinaTrabajoRecords.length} registros en la vista de edición.
+                      {medicinaDbSearchFilteredRecords.length} registro(s) coinciden con el filtro de Documento/Nombre.
                     </p>
                   )}
+                  {medicinaDbSearchFilteredRecords.length > 120 && (
+                    <p className="text-[11px] text-gray-500 px-3 py-2 border-t border-[#eaecf0]">
+                      Mostrando 120 de {medicinaDbSearchFilteredRecords.length} registros en la vista de edición.
+                    </p>
+                  )}
+                  <datalist id="med-documento-options">
+                    {medicinaFilterOptions.documento.map((option) => <option key={`med-documento-${option}`} value={option} />)}
+                  </datalist>
+                  <datalist id="med-nombre-options">
+                    {medicinaFilterOptions.employeeName.map((option) => <option key={`med-nombre-${option}`} value={option} />)}
+                  </datalist>
                   <datalist id="med-city-options">
                     {medicinaFilterOptions.city.map((option) => <option key={`med-city-${option}`} value={option} />)}
                   </datalist>

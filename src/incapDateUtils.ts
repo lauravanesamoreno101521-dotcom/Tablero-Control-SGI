@@ -7,6 +7,8 @@ const normalizeText = (value: unknown) =>
 
 export const parseSpanishDate = (value: string): Date | null => {
   const trimmed = value.trim();
+  if (!trimmed) return null;
+
   const serialMatch = trimmed.match(/^\d+(\.\d+)?$/);
   if (serialMatch) {
     const serial = Number(trimmed);
@@ -18,12 +20,19 @@ export const parseSpanishDate = (value: string): Date | null => {
   }
 
   const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!match) return null;
-  const day = Number(match[1]);
-  const month = Number(match[2]) - 1;
-  const year = Number(match[3]);
-  const parsed = new Date(year, month, day);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  if (match) {
+    const day = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    const year = Number(match[3]);
+    const parsed = new Date(year, month, day);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+
+  // Último recurso: valores tipo "Thu Jan 26 2017 00:00:16 GMT-0500 (hora estándar de Colombia)"
+  // que quedaron guardados por versiones anteriores del importador de Excel (celdas de fecha
+  // convertidas a texto sin formatear). El propio motor de Date sí sabe interpretarlos.
+  const nativeParsed = new Date(trimmed);
+  return Number.isNaN(nativeParsed.getTime()) ? null : nativeParsed;
 };
 
 export const parseUnknownDate = (value: unknown): Date | null => {

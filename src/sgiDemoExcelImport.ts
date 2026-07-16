@@ -405,10 +405,17 @@ async function importUnsafeRecords(workbook: import('xlsx').WorkBook, XLSX: type
 
   const records = rows
     .map((row, index) => {
-      const rawDate = String(row['Fecha Infracción'] ?? row['Fecha Infraccion'] ?? '').trim();
-      const rawNotificationDate = String(row['Fecha de Notificación'] ?? row['Fecha de Notificacion'] ?? '').trim();
-      const date = parseUnknownDate(rawDate) ?? parseSpanishDate(rawDate);
-      const notificationDate = parseUnknownDate(rawNotificationDate) ?? parseSpanishDate(rawNotificationDate);
+      // Importante: se toma el valor crudo de la celda (puede venir como Date, número de
+      // serie de Excel o texto) y se pasa sin convertir a string a parseUnknownDate, que sí
+      // sabe interpretar cada caso. Convertir a String() antes de parsear un objeto Date
+      // producía textos tipo "Thu Jan 26 2017 00:00:16 GMT-0500 (...)" que luego no se
+      // podían volver a parsear y quedaban guardados tal cual en la columna Fecha infracción.
+      const rawDateValue = row['Fecha Infracción'] ?? row['Fecha Infraccion'] ?? '';
+      const rawNotificationDateValue = row['Fecha de Notificación'] ?? row['Fecha de Notificacion'] ?? '';
+      const rawDate = String(rawDateValue).trim();
+      const date = parseUnknownDate(rawDateValue) ?? parseSpanishDate(rawDate);
+      const notificationDate =
+        parseUnknownDate(rawNotificationDateValue) ?? parseSpanishDate(String(rawNotificationDateValue).trim());
       const yearRaw = Number(row['Año'] ?? row['Ano'] ?? '');
       const year = Number.isFinite(yearRaw) && yearRaw > 0 ? yearRaw : date ? date.getFullYear() : null;
       const monthRaw = Number(row.Mes ?? '');
