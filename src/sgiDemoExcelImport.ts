@@ -5,12 +5,14 @@ import {
   parseUnknownDate
 } from './incapDateUtils.ts';
 import { normalizeFormacionModality, normalizeFormacionClient } from './formacionInformeDemo.ts';
+import { normalizeMedicinaCity, normalizeMedicinaExamStatus } from './medicinaTrabajoDemo.ts';
 
 export type SgiDemoExcelService =
   | 'Acompañamiento presencial'
   | 'Comportamientos inseguros'
   | 'Incapacidades'
-  | 'Formación';
+  | 'Formación'
+  | 'Medicina del trabajo';
 
 const normalizeText = (value: unknown) =>
   String(value ?? '')
@@ -272,6 +274,8 @@ export async function importDemoExcelForService(
       return importUnsafeRecords(workbook, XLSX);
     case 'Acompañamiento presencial':
       return importSstRecords(workbook, XLSX);
+    case 'Medicina del trabajo':
+      return importMedicinaRecords(workbook, XLSX);
     default:
       throw new Error('Servicio no soportado para carga de Excel.');
   }
@@ -509,6 +513,58 @@ async function importSstRecords(workbook: import('xlsx').WorkBook, XLSX: typeof 
 
   if (records.length === 0) {
     throw new Error('El Excel no contiene registros válidos de agenda SST.');
+  }
+
+  return { count: records.length, records };
+}
+
+async function importMedicinaRecords(workbook: import('xlsx').WorkBook, XLSX: typeof import('xlsx')) {
+  const sheet = findSheetByNames(workbook, ['Tablero control', 'Control Medicina del trabajo', 'Medicina del trabajo']);
+  if (!sheet) throw new Error('No se encontró la hoja "Tablero control" con los datos de medicina del trabajo.');
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+
+  const records = rows
+    .map((row, index) => {
+      const documento = pickField(row, ['documento']);
+      const employeeName = normalizePersonName(pickField(row, ['nombre completo', 'nombre']));
+
+      const entryDateRaw = pickRawField(row, ['f.ingreso', 'fecha de ingreso', 'fecha ingreso']);
+      const entryDate = parseUnknownDate(entryDateRaw);
+      const examDateRaw = pickRawField(row, ['fecha examenes', 'fecha examen', 'f.examen']);
+      const examDate = parseUnknownDate(examDateRaw);
+      const expiryDateRaw = pickRawField(row, ['fecha de vencimiento', 'fecha vencimiento', 'vencimiento']);
+      const expiryDate = parseUnknownDate(expiryDateRaw);
+      const periodicYears = toNumberOrZero(pickField(row, ['tiempo periodico', 'periodicos en anos', 'periodo'])) || 1;
+
+      return {
+        id: `med-${Date.now()}-${index}`,
+        documento,
+        employeeName,
+        city: normalizeMedicinaCity(pickField(row, ['ciudad'])),
+        role: pickField(row, ['cargo']),
+        entryDate: entryDate ? entryDate.toISOString().slice(0, 10) : '',
+        entryDateLabel: entryDate ? formatShortDate(entryDate) : String(entryDateRaw ?? '').trim(),
+        contract: pickField(row, ['contrato']),
+        linkType: pickField(row, ['vinculacion']),
+        examDate: examDate ? examDate.toISOString().slice(0, 10) : '',
+        examDateLabel: examDate ? formatShortDate(examDate) : String(examDateRaw ?? '').trim(),
+        examMonth: examDate ? examDate.getMonth() + 1 : 0,
+        examYear: examDate ? examDate.getFullYear() : 0,
+        examStatus: normalizeMedicinaExamStatus(pickField(row, ['estado examen', 'estado'])),
+        postIncapacidad: pickField(row, ['postincapacidad']),
+        ips: pickField(row, ['ips']),
+        cost: toNumberOrZero(pickField(row, ['costos', 'costo'])),
+        periodicYears,
+        expiryDate: expiryDate ? expiryDate.toISOString().slice(0, 10) : '',
+        expiryDateLabel: expiryDate ? formatShortDate(expiryDate) : String(expiryDateRaw ?? '').trim(),
+        expiryMonth: expiryDate ? expiryDate.getMonth() + 1 : 0,
+        expiryYear: expiryDate ? expiryDate.getFullYear() : 0
+      };
+    })
+    .filter((row) => row.documento && row.employeeName);
+
+  if (records.length === 0) {
+    throw new Error('El Excel no contiene registros válidos de medicina del trabajo. Verifica que tenga una hoja "Tablero control" con columnas DOCUMENTO y NOMBRE COMPLETO.');
   }
 
   return { count: records.length, records };

@@ -532,25 +532,44 @@ const normalizeUnsafeInfractionLocation = (value: string): string => {
  * completo de un objeto Date (ej. "Thu Jan 26 2017 00:00:16 GMT-0500 (hora estándar de
  * Colombia)") por un bug del importador de Excel. Si `date` ya es válida solo formatea
  * la etiqueta; si no, intenta reconstruir la fecha a partir del texto guardado.
+ *
+ * También recalcula Año/Mes cuando quedaron en null: como esos campos se derivan de la
+ * fecha si la columna "Año"/"Mes" venía vacía en la carga de Excel, el mismo bug dejaba
+ * año/mes sin valor para esos registros — por eso no aparecían años recientes (2025, 2026)
+ * en el filtro de "Todos los años" aunque los datos sí estuvieran cargados en la base.
  */
-const resolveUnsafeInfractionDate = (row: UnsafeBehaviorRecord): { date: Date | null; dateLabel: string } => {
+const resolveUnsafeInfractionDate = (
+  row: UnsafeBehaviorRecord
+): { date: Date | null; dateLabel: string; year: number | null; month: number | null } => {
+  let date: Date | null = null;
+  let dateLabel = row.dateLabel;
+
   if (row.date && !Number.isNaN(new Date(row.date).getTime())) {
-    return { date: row.date, dateLabel: formatShortDate(row.date) };
+    date = row.date;
+    dateLabel = formatShortDate(row.date);
+  } else {
+    const parsed = parseSpanishDate(String(row.dateLabel ?? ''));
+    if (parsed) {
+      date = parsed;
+      dateLabel = formatShortDate(parsed);
+    }
   }
-  const parsed = parseSpanishDate(String(row.dateLabel ?? ''));
-  if (parsed) {
-    return { date: parsed, dateLabel: formatShortDate(parsed) };
-  }
-  return { date: row.date ?? null, dateLabel: row.dateLabel };
+
+  const year = row.year && row.year > 0 ? row.year : date ? date.getFullYear() : row.year ?? null;
+  const month = row.month && row.month > 0 ? row.month : date ? date.getMonth() + 1 : row.month ?? null;
+
+  return { date, dateLabel, year, month };
 };
 
 const withNormalizedUnsafeInfractionLocation = (row: UnsafeBehaviorRecord): UnsafeBehaviorRecord => {
-  const { date, dateLabel } = resolveUnsafeInfractionDate(row);
+  const { date, dateLabel, year, month } = resolveUnsafeInfractionDate(row);
   return {
     ...row,
     location: normalizeUnsafeInfractionLocation(row.location),
     date,
-    dateLabel
+    dateLabel,
+    year,
+    month
   };
 };
 
@@ -3867,6 +3886,34 @@ export default function App() {
     };
   };
 
+  // Igual que la carga de Excel de Formación: los registros nuevos se AGREGAN a los que ya
+  // existen (no se reemplaza toda la base), para no perder ediciones ni borrados manuales
+  // hechos antes (por ejemplo, personas que ya salieron de la compañía). Se evita duplicar
+  // el mismo examen si el mismo Excel se vuelve a cargar por error.
+  const buildMedicinaRecordKey = (record: MedicinaTrabajoRecord) =>
+    [record.documento, record.examDate, record.examStatus].join('|');
+
+  const mergeMedicinaRecords = (existing: MedicinaTrabajoRecord[], imported: MedicinaTrabajoRecord[]) => {
+    const existingKeys = new Set(existing.map(buildMedicinaRecordKey));
+    const toAdd: MedicinaTrabajoRecord[] = [];
+
+    imported.forEach((record, index) => {
+      const key = buildMedicinaRecordKey(record);
+      if (existingKeys.has(key)) return;
+      existingKeys.add(key);
+      toAdd.push({
+        ...record,
+        id: `med-${Date.now()}-${index}`
+      });
+    });
+
+    return {
+      merged: [...existing, ...toAdd],
+      added: toAdd.length,
+      skipped: imported.length - toAdd.length
+    };
+  };
+
   const handleRestoreFormacionInitialData = () => {
     const confirmed = window.confirm(
       '¿Restaurar la base de datos al ejemplo inicial? Se eliminarán los registros agregados o editados en esta sesión (incluidos cargues de Excel).'
@@ -4253,7 +4300,8 @@ export default function App() {
       'Acompañamiento presencial',
       'Comportamientos inseguros',
       'Incapacidades',
-      'Formación'
+      'Formación',
+      'Medicina del trabajo'
     ];
 
     if (!supportedServices.includes(service)) {
@@ -4281,6 +4329,19 @@ export default function App() {
         const outcome = mergeFormacionRecords(formacionRecords, imported);
         setFormacionRecords(outcome.merged);
         resetFormacionForm();
+        setSgiStartDate('');
+        setSgiEndDate('');
+        alert(
+          `Se agregaron ${outcome.added} registros nuevos desde "${file.name}"` +
+            `${outcome.skipped ? ` (${outcome.skipped} duplicados omitidos)` : ''}. ` +
+            `Total en base de datos: ${outcome.merged.length}.`
+        );
+        return;
+      } else if (service === 'Medicina del trabajo') {
+        const imported = (result.records as MedicinaTrabajoRecord[]).map(withNormalizedMedicinaRecord);
+        const outcome = mergeMedicinaRecords(medicinaTrabajoRecords, imported);
+        setMedicinaTrabajoRecords(outcome.merged);
+        resetMedicinaForm();
         setSgiStartDate('');
         setSgiEndDate('');
         alert(
@@ -9325,7 +9386,8 @@ export default function App() {
                     <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
                       Ingreso base de datos · Tablero control exámenes médicos
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <DemoExcelUploadButton onFileSelected={handleDemoExcelUpload} loading={isDemoExcelLoading} />
                       <button
                         type="button"
                         onClick={handleRestoreMedicinaInitialData}
