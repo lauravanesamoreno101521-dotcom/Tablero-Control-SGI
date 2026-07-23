@@ -3456,6 +3456,20 @@ export default function App() {
         { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 12 },
         { wch: 10 }, { wch: 16 }
       ];
+
+      // Columna H (índice 7) = "FECHA EXAMENES". Se escribe como fecha real de Excel (t:'d')
+      // en vez de texto para que el desplegable del autofiltro agrupe por Año > Mes > Día
+      // (como hace Excel de forma nativa con columnas de fecha), en lugar de listar cada
+      // fecha como un valor de texto suelto.
+      const EXAM_DATE_COL = 7;
+      medicinaFilteredRecords.forEach((row, index) => {
+        const examDate = row.examDate ? new Date(`${row.examDate}T00:00:00`) : null;
+        if (examDate && !Number.isNaN(examDate.getTime())) {
+          const cellRef = XLSX.utils.encode_cell({ r: index + 1, c: EXAM_DATE_COL });
+          worksheet[cellRef] = { t: 'd', v: examDate, z: 'dd/mm/yyyy' };
+        }
+      });
+
       worksheet['!autofilter'] = { ref: 'A1:N1' };
 
       const workbook = XLSX.utils.book_new();
@@ -4150,6 +4164,15 @@ export default function App() {
     setMedicinaCityFilter('');
     setMedicinaMonthFilter('');
     setMedicinaAlertFilter('all');
+  };
+
+  const handleDeleteMedicinaRecord = (row: MedicinaTrabajoRecord) => {
+    const confirmed = window.confirm(
+      `¿Eliminar el registro de ${row.employeeName || 'este trabajador'} (Documento ${row.documento || 'sin documento'})? Esta acción no se puede deshacer.`
+    );
+    if (!confirmed) return;
+    setMedicinaTrabajoRecords((prev) => prev.filter((item) => item.id !== row.id));
+    if (editingMedicinaId === row.id) resetMedicinaForm();
   };
 
   const handleEditMedicinaRecord = (row: MedicinaTrabajoRecord) => {
@@ -9400,9 +9423,18 @@ export default function App() {
                                 </span>
                               </td>
                               <td className="px-2 py-2">
-                                <button type="button" onClick={() => handleEditMedicinaRecord(row)} className="px-2 py-1 rounded-soft border border-[#d6dce5] bg-white text-[10px] font-semibold">
-                                  Editar
-                                </button>
+                                <div className="flex gap-1">
+                                  <button type="button" onClick={() => handleEditMedicinaRecord(row)} className="px-2 py-1 rounded-soft border border-[#d6dce5] bg-white text-[10px] font-semibold">
+                                    Editar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteMedicinaRecord(row)}
+                                    className="px-2 py-1 rounded-soft border border-red-200 bg-red-50 text-red-700 text-[10px] font-semibold hover:bg-red-100"
+                                  >
+                                    Borrar
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
