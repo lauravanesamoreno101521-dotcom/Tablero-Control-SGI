@@ -3914,6 +3914,35 @@ export default function App() {
     };
   };
 
+  // Igual que Formación y Medicina del trabajo: los registros del Excel se AGREGAN a los que
+  // ya existen (no se reemplaza toda la base). El archivo maestro de comportamientos
+  // inseguros trae los años recientes en una hoja separada ("2026 INFRACCIONES") de solo ~74
+  // filas; si se reemplazara toda la tabla con eso se perderían los ~454 registros históricos
+  // (2017-2024) ya cargados.
+  const buildUnsafeRecordKey = (record: UnsafeBehaviorRecord) =>
+    [record.cedula, record.dateLabel, record.code, record.plate, String(record.amount)].join('|');
+
+  const mergeUnsafeRecords = (existing: UnsafeBehaviorRecord[], imported: UnsafeBehaviorRecord[]) => {
+    const existingKeys = new Set(existing.map(buildUnsafeRecordKey));
+    const toAdd: UnsafeBehaviorRecord[] = [];
+
+    imported.forEach((record, index) => {
+      const key = buildUnsafeRecordKey(record);
+      if (existingKeys.has(key)) return;
+      existingKeys.add(key);
+      toAdd.push({
+        ...record,
+        id: `unsafe-${Date.now()}-${index}`
+      });
+    });
+
+    return {
+      merged: [...existing, ...toAdd],
+      added: toAdd.length,
+      skipped: imported.length - toAdd.length
+    };
+  };
+
   const handleRestoreFormacionInitialData = () => {
     const confirmed = window.confirm(
       '¿Restaurar la base de datos al ejemplo inicial? Se eliminarán los registros agregados o editados en esta sesión (incluidos cargues de Excel).'
@@ -4317,10 +4346,18 @@ export default function App() {
         setSstVisits(result.records as SstVisitRecord[]);
         resetDbForm();
       } else if (service === 'Comportamientos inseguros') {
-        setUnsafeBehaviorRecords(
-          (result.records as UnsafeBehaviorRecord[]).map(withNormalizedUnsafeInfractionLocation)
-        );
+        const imported = (result.records as UnsafeBehaviorRecord[]).map(withNormalizedUnsafeInfractionLocation);
+        const outcome = mergeUnsafeRecords(unsafeBehaviorRecords, imported);
+        setUnsafeBehaviorRecords(outcome.merged);
         resetUnsafeForm();
+        setSgiStartDate('');
+        setSgiEndDate('');
+        alert(
+          `Se agregaron ${outcome.added} registros nuevos desde "${file.name}"` +
+            `${outcome.skipped ? ` (${outcome.skipped} duplicados omitidos)` : ''}. ` +
+            `Total en base de datos: ${outcome.merged.length}.`
+        );
+        return;
       } else if (service === 'Incapacidades') {
         setIncapRecords((result.records as IncapRecord[]).map(withNormalizedIncapRole));
         resetIncapForm();
