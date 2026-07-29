@@ -1059,7 +1059,7 @@ export default function App() {
     closedFindings: '',
     score: ''
   });
-  const [publicServicesTab, setPublicServicesTab] = useState<'detalle' | 'sede' | 'tendencia' | 'metas'>('detalle');
+  const [publicServicesTab, setPublicServicesTab] = useState<'detalle' | 'tendencia' | 'metas'>('detalle');
   const [publicServicesYearFilter, setPublicServicesYearFilter] = useState('');
   const [publicServicesMonthFilter, setPublicServicesMonthFilter] = useState('');
   const [publicServicesSedeFilter, setPublicServicesSedeFilter] = useState('');
@@ -6827,7 +6827,6 @@ export default function App() {
                 <div className="flex flex-wrap gap-2">
                   {([
                     { key: 'detalle', label: 'Detalle general' },
-                    { key: 'sede', label: 'Análisis por sede' },
                     { key: 'tendencia', label: 'Tendencia mensual' },
                     { key: 'metas', label: 'Cumplimiento de metas' }
                   ] as const).map((tab) => (
@@ -7067,44 +7066,40 @@ export default function App() {
                         </button>
                       )}
                     </div>
-                  </div>
-                )}
 
-                {publicServicesTab === 'detalle' && (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-left text-gray-500 border-b border-[#eaecf0]">
-                          <th className="px-2 py-2">Año</th>
-                          <th className="px-2 py-2">Mes</th>
-                          <th className="px-2 py-2">Sede</th>
-                          <th className="px-2 py-2 text-right">Energía kWh</th>
-                          <th className="px-2 py-2 text-right">Agua m³</th>
-                          <th className="px-2 py-2 text-right">Factura</th>
-                          {sgiCanEditDatasets && <th className="px-2 py-2">Acciones</th>}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {publicServicesFilteredRecords.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className="px-2 py-6 text-center text-gray-400">
-                              No hay registros con el filtro actual.
-                            </td>
+                    <div className="overflow-x-auto border-t border-[#eaecf0] pt-3">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-gray-500 border-b border-[#eaecf0]">
+                            <th className="px-2 py-2">Año</th>
+                            <th className="px-2 py-2">Mes</th>
+                            <th className="px-2 py-2">Sede</th>
+                            <th className="px-2 py-2 text-right">Energía kWh</th>
+                            <th className="px-2 py-2 text-right">Agua m³</th>
+                            <th className="px-2 py-2 text-right">Factura</th>
+                            <th className="px-2 py-2">Acciones</th>
                           </tr>
-                        ) : (
-                          publicServicesFilteredRecords.map((row) => (
-                            <tr key={row.id} className="border-b border-[#f1f3f6] hover:bg-gray-50">
-                              <td className="px-2 py-2">{row.year}</td>
-                              <td className="px-2 py-2 capitalize">{PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]}</td>
-                              <td className="px-2 py-2">{row.sede}</td>
-                              <td className="px-2 py-2 text-right">{row.energyKwh.toLocaleString('es-CO')}</td>
-                              <td className="px-2 py-2 text-right">
-                                {(row.waterAcueducto + row.waterAlcantarillado).toLocaleString('es-CO')}
+                        </thead>
+                        <tbody>
+                          {publicServicesFilteredRecords.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="px-2 py-6 text-center text-gray-400">
+                                No hay registros con el filtro actual.
                               </td>
-                              <td className="px-2 py-2 text-right">
-                                ${Math.round(row.totalInvoice).toLocaleString('es-CO')}
-                              </td>
-                              {sgiCanEditDatasets && (
+                            </tr>
+                          ) : (
+                            publicServicesFilteredRecords.map((row) => (
+                              <tr key={row.id} className="border-b border-[#f1f3f6] hover:bg-gray-50">
+                                <td className="px-2 py-2">{row.year}</td>
+                                <td className="px-2 py-2 capitalize">{PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]}</td>
+                                <td className="px-2 py-2">{row.sede}</td>
+                                <td className="px-2 py-2 text-right">{row.energyKwh.toLocaleString('es-CO')}</td>
+                                <td className="px-2 py-2 text-right">
+                                  {(row.waterAcueducto + row.waterAlcantarillado).toLocaleString('es-CO')}
+                                </td>
+                                <td className="px-2 py-2 text-right">
+                                  ${Math.round(row.totalInvoice).toLocaleString('es-CO')}
+                                </td>
                                 <td className="px-2 py-2">
                                   <div className="flex items-center gap-2">
                                     <button
@@ -7121,51 +7116,103 @@ export default function App() {
                                     </button>
                                   </div>
                                 </td>
-                              )}
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
 
-                {publicServicesTab === 'sede' && (
-                  <div className="overflow-x-auto">
-                    {publicServicesBySedeStats.length === 0 ? (
-                      <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>
-                    ) : (
-                      <div className="flex items-end gap-2 min-w-max px-1 py-2">
-                        {(() => {
-                          const maxInvoice = Math.max(...publicServicesBySedeStats.map((row) => row.invoice), 1);
-                          return publicServicesBySedeStats.map((row) => {
-                            const barHeight = getScaledBarHeight(row.invoice, maxInvoice);
-                            const shortLabel = row.sede.replace(/^[^-]*-\s*/, '') || row.sede;
-                            return (
-                              <div key={row.sede} className="w-[76px] flex flex-col items-center shrink-0">
-                                <span className="text-[10px] font-mono font-semibold text-[#00502c] mb-1 whitespace-nowrap">
-                                  ${Math.round(row.invoice / 1000)}k
-                                </span>
-                                <div className="h-40 w-full flex items-end justify-center">
-                                  <div
-                                    className="w-[34px] rounded-t-sm shrink-0"
-                                    style={{
-                                      height: `${barHeight}%`,
-                                      minHeight: barHeight <= 0 ? '2px' : '6px',
-                                      backgroundColor: '#00502c'
-                                    }}
-                                    title={`${row.sede}: $${Math.round(row.invoice).toLocaleString('es-CO')}`}
-                                  />
+                {publicServicesTab === 'detalle' && (
+                  <div className="space-y-5">
+                    <div className="overflow-x-auto">
+                      <p className="text-xs font-bold text-[#00502c] uppercase tracking-wide mb-2">
+                        Total factura por sede
+                      </p>
+                      {publicServicesBySedeStats.length === 0 ? (
+                        <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>
+                      ) : (
+                        <div className="flex items-end gap-2 min-w-max px-1 py-2">
+                          {(() => {
+                            const maxInvoice = Math.max(...publicServicesBySedeStats.map((row) => row.invoice), 1);
+                            return publicServicesBySedeStats.map((row) => {
+                              const barHeight = getScaledBarHeight(row.invoice, maxInvoice);
+                              const shortLabel = row.sede.replace(/^[^-]*-\s*/, '') || row.sede;
+                              return (
+                                <div key={row.sede} className="w-[76px] flex flex-col items-center shrink-0">
+                                  <span className="text-[10px] font-mono font-semibold text-[#00502c] mb-1 whitespace-nowrap">
+                                    ${Math.round(row.invoice / 1000)}k
+                                  </span>
+                                  <div className="h-40 w-full flex items-end justify-center">
+                                    <div
+                                      className="w-[34px] rounded-t-sm shrink-0"
+                                      style={{
+                                        height: `${barHeight}%`,
+                                        minHeight: barHeight <= 0 ? '2px' : '6px',
+                                        backgroundColor: '#00502c'
+                                      }}
+                                      title={`${row.sede}: $${Math.round(row.invoice).toLocaleString('es-CO')}`}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-gray-500 text-center mt-1.5 leading-tight break-words">
+                                    {shortLabel}
+                                  </span>
                                 </div>
-                                <span className="text-[10px] text-gray-500 text-center mt-1.5 leading-tight break-words">
-                                  {shortLabel}
-                                </span>
-                              </div>
-                            );
-                          });
-                        })()}
-                      </div>
-                    )}
+                              );
+                            });
+                          })()}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-gray-500 border-b border-[#eaecf0]">
+                            <th className="px-2 py-2">Sede</th>
+                            <th className="px-2 py-2 text-right">Energía kWh</th>
+                            <th className="px-2 py-2 text-right">Agua m³</th>
+                            <th className="px-2 py-2 text-right">Factura</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {publicServicesBySedeStats.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-2 py-6 text-center text-gray-400">
+                                No hay datos con el filtro actual.
+                              </td>
+                            </tr>
+                          ) : (
+                            <>
+                              {publicServicesBySedeStats.map((row) => (
+                                <tr key={row.sede} className="border-b border-[#f1f3f6] hover:bg-gray-50">
+                                  <td className="px-2 py-2">{row.sede}</td>
+                                  <td className="px-2 py-2 text-right">{Math.round(row.energyKwh).toLocaleString('es-CO')}</td>
+                                  <td className="px-2 py-2 text-right">{Math.round(row.waterM3).toLocaleString('es-CO')}</td>
+                                  <td className="px-2 py-2 text-right">
+                                    ${Math.round(row.invoice).toLocaleString('es-CO')}
+                                  </td>
+                                </tr>
+                              ))}
+                              <tr className="font-semibold text-[#00502c]">
+                                <td className="px-2 py-2">Total</td>
+                                <td className="px-2 py-2 text-right">
+                                  {Math.round(publicServicesKpis.totalEnergyKwh).toLocaleString('es-CO')}
+                                </td>
+                                <td className="px-2 py-2 text-right">
+                                  {Math.round(publicServicesKpis.totalWaterM3).toLocaleString('es-CO')}
+                                </td>
+                                <td className="px-2 py-2 text-right">
+                                  ${Math.round(publicServicesKpis.totalInvoice).toLocaleString('es-CO')}
+                                </td>
+                              </tr>
+                            </>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
 
