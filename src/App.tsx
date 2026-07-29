@@ -156,7 +156,7 @@ import {
   INITIAL_PUBLIC_SERVICE_RECORDS,
   PUBLIC_SERVICES_MONTH_NAMES,
   PUBLIC_SERVICES_TARGETS,
-  getPublicServiceAdminEmployees,
+  getPublicServiceOfficialIndicator,
   normalizePublicServiceSede,
   type PublicServiceRecord
 } from './publicServicesDemo.ts';
@@ -2584,15 +2584,28 @@ export default function App() {
       if (!topSede || total > topSede.total) topSede = { sede, total };
     });
 
+    // El consumo por empleado se toma del valor oficial ya calculado en la hoja "Indicadores"
+    // del Excel (promediado entre los meses que queden dentro del filtro actual), en vez de
+    // recalcularlo sumando M3/kWh por sede, porque esa suma por sede duplica lecturas de
+    // medidores compartidos entre algunos locales.
     const monthsPresent = new Set(publicServicesFilteredRecords.map((row) => `${row.year}-${row.month}`));
-    let employeeDenominator = 0;
+    let energySum = 0;
+    let energyCount = 0;
+    let waterSum = 0;
+    let waterCount = 0;
     monthsPresent.forEach((key) => {
       const [year, month] = key.split('-').map(Number);
-      employeeDenominator += getPublicServiceAdminEmployees(year, month) ?? 0;
+      const official = getPublicServiceOfficialIndicator(year, month);
+      if (official) {
+        energySum += official.energyPerEmployeeKwh;
+        energyCount += 1;
+        waterSum += official.waterPerEmployeeM3;
+        waterCount += 1;
+      }
     });
 
-    const energyPerEmployee = employeeDenominator > 0 ? totalEnergyKwh / employeeDenominator : null;
-    const waterPerEmployee = employeeDenominator > 0 ? totalWaterM3 / employeeDenominator : null;
+    const energyPerEmployee = energyCount > 0 ? energySum / energyCount : null;
+    const waterPerEmployee = waterCount > 0 ? waterSum / waterCount : null;
 
     return { totalEnergyKwh, totalWaterM3, totalInvoice, topSede, energyPerEmployee, waterPerEmployee };
   }, [publicServicesFilteredRecords]);
@@ -7389,9 +7402,9 @@ export default function App() {
                           </tr>
                         ) : (
                           publicServicesMonthlyTrend.map((row) => {
-                            const employees = getPublicServiceAdminEmployees(row.year, row.month);
-                            const energyPerEmployee = employees ? row.energyKwh / employees : null;
-                            const waterPerEmployee = employees ? row.waterM3 / employees : null;
+                            const official = getPublicServiceOfficialIndicator(row.year, row.month);
+                            const energyPerEmployee = official ? official.energyPerEmployeeKwh : null;
+                            const waterPerEmployee = official ? official.waterPerEmployeeM3 : null;
                             const energyOk =
                               energyPerEmployee !== null && energyPerEmployee <= PUBLIC_SERVICES_TARGETS.energyPerEmployeeKwh;
                             const waterOk =
@@ -7407,8 +7420,8 @@ export default function App() {
                                   {waterPerEmployee === null ? '—' : `${waterPerEmployee.toFixed(1)} m³`}
                                 </td>
                                 <td className="px-2 py-2">
-                                  {employees === null ? (
-                                    <span className="text-gray-400">Sin dato de empleados</span>
+                                  {official === null ? (
+                                    <span className="text-gray-400">Sin dato de indicador</span>
                                   ) : (
                                     <span
                                       className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${

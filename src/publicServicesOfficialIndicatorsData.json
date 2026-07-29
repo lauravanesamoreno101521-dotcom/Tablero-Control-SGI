@@ -1,0 +1,104 @@
+[
+  {
+    "year": 2025,
+    "month": 1,
+    "energyPerEmployeeKwh": 59.651162790697676,
+    "waterPerEmployeeM3": 3.302325581395349
+  },
+  {
+    "year": 2025,
+    "month": 2,
+    "energyPerEmployeeKwh": 51.71084337349398,
+    "waterPerEmployeeM3": 3.4096385542168677
+  },
+  {
+    "year": 2025,
+    "month": 3,
+    "energyPerEmployeeKwh": 58.71764705882353,
+    "waterPerEmployeeM3": 3.4235294117647057
+  },
+  {
+    "year": 2025,
+    "month": 4,
+    "energyPerEmployeeKwh": 53.705882352941174,
+    "waterPerEmployeeM3": 3.2588235294117647
+  },
+  {
+    "year": 2025,
+    "month": 5,
+    "energyPerEmployeeKwh": 55.214285714285715,
+    "waterPerEmployeeM3": 3.630952380952381
+  },
+  {
+    "year": 2025,
+    "month": 6,
+    "energyPerEmployeeKwh": 55.73809523809524,
+    "waterPerEmployeeM3": 0.7738095238095238
+  },
+  {
+    "year": 2025,
+    "month": 7,
+    "energyPerEmployeeKwh": 57.35294117647059,
+    "waterPerEmployeeM3": 3.5058823529411764
+  },
+  {
+    "year": 2025,
+    "month": 8,
+    "energyPerEmployeeKwh": 56.56470588235294,
+    "waterPerEmployeeM3": 0.8117647058823529
+  },
+  {
+    "year": 2025,
+    "month": 9,
+    "energyPerEmployeeKwh": 59.906976744186046,
+    "waterPerEmployeeM3": 0.8604651162790697
+  },
+  {
+    "year": 2025,
+    "month": 10,
+    "energyPerEmployeeKwh": 59.7906976744186,
+    "waterPerEmployeeM3": 0.8488372093023255
+  },
+  {
+    "year": 2025,
+    "month": 11,
+    "energyPerEmployeeKwh": 52.666666666666664,
+    "waterPerEmployeeM3": 0.6555555555555556
+  },
+  {
+    "year": 2025,
+    "month": 12,
+    "energyPerEmployeeKwh": 50.62637362637363,
+    "waterPerEmployeeM3": 1.098901098901099
+  },
+  {
+    "year": 2026,
+    "month": 1,
+    "energyPerEmployeeKwh": 53.247191011235955,
+    "waterPerEmployeeM3": 1.1866666666666668
+  },
+  {
+    "year": 2026,
+    "month": 2,
+    "energyPerEmployeeKwh": 46.98888888888889,
+    "waterPerEmployeeM3": 1.3235294117647058
+  },
+  {
+    "year": 2026,
+    "month": 3,
+    "energyPerEmployeeKwh": 54.91111111111111,
+    "waterPerEmployeeM3": 0.8737864077669902
+  },
+  {
+    "year": 2026,
+    "month": 4,
+    "energyPerEmployeeKwh": 54.23913043478261,
+    "waterPerEmployeeM3": 1.3529411764705883
+  },
+  {
+    "year": 2026,
+    "month": 5,
+    "energyPerEmployeeKwh": 56.45054945054945,
+    "waterPerEmployeeM3": 1.3
+  }
+]

@@ -6,6 +6,7 @@
 
 import rawRecords from './publicServicesRecordsData.json';
 import rawEmployeeCounts from './publicServicesEmployeeCountsData.json';
+import rawOfficialIndicators from './publicServicesOfficialIndicatorsData.json';
 
 export type PublicServiceRecord = {
   id: string;
@@ -26,6 +27,18 @@ export type PublicServiceEmployeeCount = {
   year: number;
   month: number;
   adminEmployees: number;
+};
+
+// Consumo por persona administrativa ya calculado en la hoja "Indicadores 2025/2026" del
+// Excel de origen. Se usa este valor oficial (en vez de recalcularlo a partir de la suma de
+// M3/kWh por sede) porque las columnas M3 ACUEDUCTO/ALCANTARILLADO del detalle por sede
+// tienen lecturas compartidas entre algunos locales que inflan la suma frente a la cifra
+// consolidada real de la empresa.
+export type PublicServiceOfficialIndicator = {
+  year: number;
+  month: number;
+  energyPerEmployeeKwh: number;
+  waterPerEmployeeM3: number;
 };
 
 // Metas definidas en la hoja "METAS" del Excel de origen.
@@ -54,4 +67,15 @@ export const PUBLIC_SERVICE_EMPLOYEE_COUNTS: PublicServiceEmployeeCount[] = rawE
 export const getPublicServiceAdminEmployees = (year: number, month: number): number | null => {
   const match = PUBLIC_SERVICE_EMPLOYEE_COUNTS.find((row) => row.year === year && row.month === month);
   return match ? match.adminEmployees : null;
+};
+
+export const PUBLIC_SERVICE_OFFICIAL_INDICATORS: PublicServiceOfficialIndicator[] =
+  rawOfficialIndicators as PublicServiceOfficialIndicator[];
+
+export const getPublicServiceOfficialIndicator = (
+  year: number,
+  month: number
+): PublicServiceOfficialIndicator | null => {
+  const match = PUBLIC_SERVICE_OFFICIAL_INDICATORS.find((row) => row.year === year && row.month === month);
+  return match ?? null;
 };
