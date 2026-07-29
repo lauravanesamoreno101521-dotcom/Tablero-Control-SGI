@@ -1,0 +1,172 @@
+[
+  {
+    "year": 2025,
+    "month": 1,
+    "waterM3": 284,
+    "energyKwh": 5130,
+    "waterValue": 1187548,
+    "energyValue": 5356368,
+    "adminEmployees": 86,
+    "totalEmployees": 748
+  },
+  {
+    "year": 2025,
+    "month": 2,
+    "waterM3": 283,
+    "energyKwh": 4292,
+    "waterValue": 968562,
+    "energyValue": 4474373,
+    "adminEmployees": 83,
+    "totalEmployees": 708
+  },
+  {
+    "year": 2025,
+    "month": 3,
+    "waterM3": 291,
+    "energyKwh": 4991,
+    "waterValue": 1048553,
+    "energyValue": 5278040,
+    "adminEmployees": 85,
+    "totalEmployees": 736
+  },
+  {
+    "year": 2025,
+    "month": 4,
+    "waterM3": 277,
+    "energyKwh": 4565,
+    "waterValue": 874776,
+    "energyValue": 4864938,
+    "adminEmployees": 85,
+    "totalEmployees": 746
+  },
+  {
+    "year": 2025,
+    "month": 5,
+    "waterM3": 305,
+    "energyKwh": 4638,
+    "waterValue": 1262411,
+    "energyValue": 4845306,
+    "adminEmployees": 84,
+    "totalEmployees": 750
+  },
+  {
+    "year": 2025,
+    "month": 6,
+    "waterM3": 65,
+    "energyKwh": 4682,
+    "waterValue": 956521,
+    "energyValue": 4759853,
+    "adminEmployees": 84,
+    "totalEmployees": 733
+  },
+  {
+    "year": 2025,
+    "month": 7,
+    "waterM3": 298,
+    "energyKwh": 4875,
+    "waterValue": 1172620,
+    "energyValue": 4366100,
+    "adminEmployees": 85,
+    "totalEmployees": 709
+  },
+  {
+    "year": 2025,
+    "month": 8,
+    "waterM3": 69,
+    "energyKwh": 4808,
+    "waterValue": 1021072,
+    "energyValue": 4660476,
+    "adminEmployees": 85,
+    "totalEmployees": 702
+  },
+  {
+    "year": 2025,
+    "month": 9,
+    "waterM3": 74,
+    "energyKwh": 5152,
+    "waterValue": 1079423,
+    "energyValue": 5220486,
+    "adminEmployees": 86,
+    "totalEmployees": 703
+  },
+  {
+    "year": 2025,
+    "month": 10,
+    "waterM3": 73,
+    "energyKwh": 5142,
+    "waterValue": 1066578,
+    "energyValue": 5382369,
+    "adminEmployees": 86,
+    "totalEmployees": 728
+  },
+  {
+    "year": 2025,
+    "month": 11,
+    "waterM3": 59,
+    "energyKwh": 4740,
+    "waterValue": 917896,
+    "energyValue": 4842971,
+    "adminEmployees": 90,
+    "totalEmployees": 743
+  },
+  {
+    "year": 2025,
+    "month": 12,
+    "waterM3": 100,
+    "energyKwh": 4607,
+    "waterValue": 1452264,
+    "energyValue": 4628981,
+    "adminEmployees": 91,
+    "totalEmployees": 715
+  },
+  {
+    "year": 2026,
+    "month": 1,
+    "waterM3": 75,
+    "energyKwh": 4739,
+    "waterValue": 1124121,
+    "energyValue": 4568018,
+    "adminEmployees": 89,
+    "totalEmployees": 714
+  },
+  {
+    "year": 2026,
+    "month": 2,
+    "waterM3": 68,
+    "energyKwh": 4229,
+    "waterValue": 1055569,
+    "energyValue": 4078391,
+    "adminEmployees": 90,
+    "totalEmployees": 713
+  },
+  {
+    "year": 2026,
+    "month": 3,
+    "waterM3": 103,
+    "energyKwh": 4942,
+    "waterValue": 1514924,
+    "energyValue": 4751407,
+    "adminEmployees": 90,
+    "totalEmployees": 698
+  },
+  {
+    "year": 2026,
+    "month": 4,
+    "waterM3": 68,
+    "energyKwh": 4990,
+    "waterValue": 1055523,
+    "energyValue": 4453466,
+    "adminEmployees": 92,
+    "totalEmployees": 710
+  },
+  {
+    "year": 2026,
+    "month": 5,
+    "waterM3": 70,
+    "energyKwh": 5137,
+    "waterValue": 1081772,
+    "energyValue": 5003578,
+    "adminEmployees": 91,
+    "totalEmployees": 688
+  }
+]

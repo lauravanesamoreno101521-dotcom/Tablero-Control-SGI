@@ -154,11 +154,13 @@ import {
 } from './auditoriasDemo.ts';
 import {
   INITIAL_PUBLIC_SERVICE_RECORDS,
+  INITIAL_PUBLIC_SERVICE_INDICATOR_RECORDS,
   PUBLIC_SERVICES_MONTH_NAMES,
   PUBLIC_SERVICES_TARGETS,
-  getPublicServiceOfficialIndicator,
+  computePublicServiceIndicatorRatios,
   normalizePublicServiceSede,
-  type PublicServiceRecord
+  type PublicServiceRecord,
+  type PublicServiceIndicatorRecord
 } from './publicServicesDemo.ts';
 
 type IncapInformeByYear = Record<string, unknown[][]>;
@@ -1067,6 +1069,7 @@ export default function App() {
   const [publicServicesMonthToFilter, setPublicServicesMonthToFilter] = useState('');
   const [publicServicesSedeFilter, setPublicServicesSedeFilter] = useState('');
   const [showPublicServicesEntry, setShowPublicServicesEntry] = useState(false);
+  const [publicServicesEntryPanel, setPublicServicesEntryPanel] = useState<'sede' | 'indicadores'>('sede');
   const [editingPublicServiceId, setEditingPublicServiceId] = useState<string | null>(null);
   const [publicServiceForm, setPublicServiceForm] = useState({
     year: String(new Date().getFullYear()),
@@ -1079,6 +1082,17 @@ export default function App() {
     waterValue: '',
     totalInvoice: '',
     note: ''
+  });
+  const [editingPublicServiceIndicatorId, setEditingPublicServiceIndicatorId] = useState<string | null>(null);
+  const [publicServiceIndicatorForm, setPublicServiceIndicatorForm] = useState({
+    year: String(new Date().getFullYear()),
+    month: '',
+    waterM3: '',
+    energyKwh: '',
+    waterValue: '',
+    energyValue: '',
+    adminEmployees: '',
+    totalEmployees: ''
   });
   const sgiDonutRef = useRef<HTMLDivElement | null>(null);
   const supabaseSyncReadyRef = useRef(false);
@@ -1554,6 +1568,10 @@ export default function App() {
     () => INITIAL_PUBLIC_SERVICE_RECORDS
   );
 
+  const [publicServiceIndicatorRecords, setPublicServiceIndicatorRecords] = useState<PublicServiceIndicatorRecord[]>(
+    () => INITIAL_PUBLIC_SERVICE_INDICATOR_RECORDS
+  );
+
   const buildSgiDatasetBaselines = (): SgiPersistedDatasets => ({
     acompanamiento: initialSstVisits,
     comportamientos: initialUnsafeBehaviorRecords,
@@ -1562,6 +1580,7 @@ export default function App() {
     accidentalidad: initialAccidentalidadRecords,
     medicinaTrabajo: initialMedicinaTrabajoRecords,
     publicServices: INITIAL_PUBLIC_SERVICE_RECORDS,
+    publicServiceIndicators: INITIAL_PUBLIC_SERVICE_INDICATOR_RECORDS,
     incapInformeEdits: {},
     formacionInformeEdits: {}
   });
@@ -1585,6 +1604,7 @@ export default function App() {
         sede: normalizePublicServiceSede(row.sede)
       }))
     );
+    setPublicServiceIndicatorRecords(datasets.publicServiceIndicators as PublicServiceIndicatorRecord[]);
     setIncapDemoInformeEdits(
       datasets.incapInformeEdits as Record<number, Partial<IncapInformeMonthlyInputs & IncapInformeManualBdEdits>>
     );
@@ -1693,6 +1713,7 @@ export default function App() {
           accidentalidad: accidentalidadRecords,
           medicinaTrabajo: medicinaTrabajoRecords,
           publicServices: publicServiceRecords,
+          publicServiceIndicators: publicServiceIndicatorRecords,
           incapInformeEdits: incapDemoInformeEdits,
           formacionInformeEdits: formacionDemoInformeEdits
         },
@@ -1709,6 +1730,7 @@ export default function App() {
     accidentalidadRecords,
     medicinaTrabajoRecords,
     publicServiceRecords,
+    publicServiceIndicatorRecords,
     incapDemoInformeEdits,
     formacionDemoInformeEdits,
     isDbTestConnected,
@@ -2567,6 +2589,14 @@ export default function App() {
     publicServicesSedeFilter
   ]);
 
+  const publicServiceIndicatorByMonth = useMemo(() => {
+    const map = new Map<string, PublicServiceIndicatorRecord>();
+    publicServiceIndicatorRecords.forEach((row) => {
+      map.set(`${row.year}-${row.month}`, row);
+    });
+    return map;
+  }, [publicServiceIndicatorRecords]);
+
   const publicServicesKpis = useMemo(() => {
     const totalEnergyKwh = publicServicesFilteredRecords.reduce((sum, row) => sum + row.energyKwh, 0);
     const totalWaterM3 = publicServicesFilteredRecords.reduce(
@@ -2584,23 +2614,28 @@ export default function App() {
       if (!topSede || total > topSede.total) topSede = { sede, total };
     });
 
-    // El consumo por empleado se toma del valor oficial ya calculado en la hoja "Indicadores"
-    // del Excel (promediado entre los meses que queden dentro del filtro actual), en vez de
-    // recalcularlo sumando M3/kWh por sede, porque esa suma por sede duplica lecturas de
-    // medidores compartidos entre algunos locales.
+    // El consumo por empleado se toma de los indicadores mensuales ingresados en el panel
+    // "Indicadores" (promediado entre los meses que queden dentro del filtro actual),
+    // calculado con la misma fórmula del Excel (consumo total del mes / administrativos), en
+    // vez de recalcularlo sumando M3/kWh por sede, porque esa suma por sede duplica lecturas
+    // de medidores compartidos entre algunos locales.
     const monthsPresent = new Set(publicServicesFilteredRecords.map((row) => `${row.year}-${row.month}`));
     let energySum = 0;
     let energyCount = 0;
     let waterSum = 0;
     let waterCount = 0;
     monthsPresent.forEach((key) => {
-      const [year, month] = key.split('-').map(Number);
-      const official = getPublicServiceOfficialIndicator(year, month);
-      if (official) {
-        energySum += official.energyPerEmployeeKwh;
-        energyCount += 1;
-        waterSum += official.waterPerEmployeeM3;
-        waterCount += 1;
+      const indicator = publicServiceIndicatorByMonth.get(key);
+      if (indicator) {
+        const ratios = computePublicServiceIndicatorRatios(indicator);
+        if (ratios.energyPerAdminKwh !== null) {
+          energySum += ratios.energyPerAdminKwh;
+          energyCount += 1;
+        }
+        if (ratios.waterPerAdminM3 !== null) {
+          waterSum += ratios.waterPerAdminM3;
+          waterCount += 1;
+        }
       }
     });
 
@@ -2608,7 +2643,7 @@ export default function App() {
     const waterPerEmployee = waterCount > 0 ? waterSum / waterCount : null;
 
     return { totalEnergyKwh, totalWaterM3, totalInvoice, topSede, energyPerEmployee, waterPerEmployee };
-  }, [publicServicesFilteredRecords]);
+  }, [publicServicesFilteredRecords, publicServiceIndicatorByMonth]);
 
   const publicServicesBySedeStats = useMemo(() => {
     const map = new Map<string, { sede: string; energyKwh: number; waterM3: number; invoice: number }>();
@@ -4629,6 +4664,83 @@ export default function App() {
     resetPublicServiceForm();
   };
 
+  const resetPublicServiceIndicatorForm = () => {
+    setPublicServiceIndicatorForm({
+      year: String(new Date().getFullYear()),
+      month: '',
+      waterM3: '',
+      energyKwh: '',
+      waterValue: '',
+      energyValue: '',
+      adminEmployees: '',
+      totalEmployees: ''
+    });
+    setEditingPublicServiceIndicatorId(null);
+  };
+
+  const handleDeletePublicServiceIndicator = (row: PublicServiceIndicatorRecord) => {
+    const confirmed = window.confirm(
+      `¿Eliminar el indicador de ${PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]} ${row.year}? Esta acción no se puede deshacer.`
+    );
+    if (!confirmed) return;
+    setPublicServiceIndicatorRecords((prev) => prev.filter((item) => item.id !== row.id));
+    if (editingPublicServiceIndicatorId === row.id) resetPublicServiceIndicatorForm();
+  };
+
+  const handleEditPublicServiceIndicator = (row: PublicServiceIndicatorRecord) => {
+    setEditingPublicServiceIndicatorId(row.id);
+    setPublicServiceIndicatorForm({
+      year: String(row.year),
+      month: String(row.month),
+      waterM3: String(row.waterM3),
+      energyKwh: String(row.energyKwh),
+      waterValue: String(row.waterValue),
+      energyValue: String(row.energyValue),
+      adminEmployees: String(row.adminEmployees),
+      totalEmployees: String(row.totalEmployees)
+    });
+  };
+
+  const handlePublicServiceIndicatorFormSubmit = () => {
+    const year = Number(publicServiceIndicatorForm.year);
+    const month = Number(publicServiceIndicatorForm.month);
+    if (!year || !month) {
+      alert('Completa año y mes para registrar el indicador.');
+      return;
+    }
+
+    const nextId = editingPublicServiceIndicatorId ?? `psi-${Date.now()}`;
+    const nextRecord: PublicServiceIndicatorRecord = {
+      id: nextId,
+      year,
+      month,
+      waterM3: Number(publicServiceIndicatorForm.waterM3) || 0,
+      energyKwh: Number(publicServiceIndicatorForm.energyKwh) || 0,
+      waterValue: Number(publicServiceIndicatorForm.waterValue) || 0,
+      energyValue: Number(publicServiceIndicatorForm.energyValue) || 0,
+      adminEmployees: Number(publicServiceIndicatorForm.adminEmployees) || 0,
+      totalEmployees: Number(publicServiceIndicatorForm.totalEmployees) || 0
+    };
+
+    if (editingPublicServiceIndicatorId) {
+      setPublicServiceIndicatorRecords((prev) =>
+        prev.map((row) => (row.id === editingPublicServiceIndicatorId ? nextRecord : row))
+      );
+    } else {
+      setPublicServiceIndicatorRecords((prev) => {
+        const existingIndex = prev.findIndex((row) => row.year === year && row.month === month);
+        if (existingIndex >= 0) {
+          const next = [...prev];
+          next[existingIndex] = nextRecord;
+          return next;
+        }
+        return [nextRecord, ...prev];
+      });
+    }
+
+    resetPublicServiceIndicatorForm();
+  };
+
   const handleDownloadPublicServicesReport = async () => {
     if (publicServicesFilteredRecords.length === 0) {
       alert('No hay registros de consumo de servicios públicos para exportar con el filtro actual.');
@@ -5179,6 +5291,7 @@ export default function App() {
     setAccidentalidadRecords(initialAccidentalidadRecords.map((row) => ({ ...row })));
     setMedicinaTrabajoRecords(initialMedicinaTrabajoRecords.map((row) => ({ ...row })));
     setPublicServiceRecords(INITIAL_PUBLIC_SERVICE_RECORDS.map((row) => ({ ...row })));
+    setPublicServiceIndicatorRecords(INITIAL_PUBLIC_SERVICE_INDICATOR_RECORDS.map((row) => ({ ...row })));
     setIncapDemoInformeEdits({});
     setFormacionDemoInformeEdits({});
     setSgiStartDate('');
@@ -7058,6 +7171,33 @@ export default function App() {
 
                 {showPublicServicesEntry && sgiCanEditDatasets && (
                   <div className="border border-[#eaecf0] rounded-soft p-3.5 bg-gray-50 space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPublicServicesEntryPanel('sede')}
+                        className={`px-3 py-1.5 rounded-soft text-xs font-semibold transition-colors ${
+                          publicServicesEntryPanel === 'sede'
+                            ? 'bg-[#00502c] text-white'
+                            : 'bg-white border border-[#d6dce5] text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        Consumo por sede
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPublicServicesEntryPanel('indicadores')}
+                        className={`px-3 py-1.5 rounded-soft text-xs font-semibold transition-colors ${
+                          publicServicesEntryPanel === 'indicadores'
+                            ? 'bg-[#00502c] text-white'
+                            : 'bg-white border border-[#d6dce5] text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        Indicadores
+                      </button>
+                    </div>
+
+                    {publicServicesEntryPanel === 'sede' && (
+                    <>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                       <input
                         type="number"
@@ -7205,6 +7345,162 @@ export default function App() {
                         </tbody>
                       </table>
                     </div>
+                    </>
+                    )}
+
+                    {publicServicesEntryPanel === 'indicadores' && (
+                    <>
+                    <p className="text-[11px] text-gray-500">
+                      Consumo total de la empresa por mes (no por sede) y número de personas, igual que la hoja
+                      "Indicadores" del Excel. Con estos datos se calculan automáticamente los indicadores por
+                      empleado usando las mismas fórmulas.
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      <input
+                        type="number"
+                        placeholder="Año"
+                        value={publicServiceIndicatorForm.year}
+                        onChange={(e) => setPublicServiceIndicatorForm((p) => ({ ...p, year: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <select
+                        value={publicServiceIndicatorForm.month}
+                        onChange={(e) => setPublicServiceIndicatorForm((p) => ({ ...p, month: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      >
+                        <option value="">Mes</option>
+                        {PUBLIC_SERVICES_MONTH_NAMES.map((name, index) => (
+                          <option key={`ps-ind-form-month-${index + 1}`} value={String(index + 1)}>
+                            {name.charAt(0).toUpperCase() + name.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        placeholder="Agua total (M3)"
+                        value={publicServiceIndicatorForm.waterM3}
+                        onChange={(e) => setPublicServiceIndicatorForm((p) => ({ ...p, waterM3: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Energía total (Kw)"
+                        value={publicServiceIndicatorForm.energyKwh}
+                        onChange={(e) => setPublicServiceIndicatorForm((p) => ({ ...p, energyKwh: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Agua total (Valor)"
+                        value={publicServiceIndicatorForm.waterValue}
+                        onChange={(e) => setPublicServiceIndicatorForm((p) => ({ ...p, waterValue: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Energía total (Valor)"
+                        value={publicServiceIndicatorForm.energyValue}
+                        onChange={(e) => setPublicServiceIndicatorForm((p) => ({ ...p, energyValue: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Administrativos (# personas)"
+                        value={publicServiceIndicatorForm.adminEmployees}
+                        onChange={(e) => setPublicServiceIndicatorForm((p) => ({ ...p, adminEmployees: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Total personal activo"
+                        value={publicServiceIndicatorForm.totalEmployees}
+                        onChange={(e) => setPublicServiceIndicatorForm((p) => ({ ...p, totalEmployees: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handlePublicServiceIndicatorFormSubmit}
+                        className="px-4 py-2 rounded-soft text-xs font-semibold bg-[#00502c] text-white hover:bg-[#006b3d] transition-colors"
+                      >
+                        {editingPublicServiceIndicatorId ? 'Actualizar' : 'Registrar'}
+                      </button>
+                      {editingPublicServiceIndicatorId && (
+                        <button
+                          onClick={resetPublicServiceIndicatorForm}
+                          className="px-4 py-2 rounded-soft text-xs font-semibold border border-[#d6dce5] text-gray-600 hover:bg-gray-100 transition-colors"
+                        >
+                          Cancelar edición
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="overflow-x-auto border-t border-[#eaecf0] pt-3">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-gray-500 border-b border-[#eaecf0]">
+                            <th className="px-2 py-2">Año</th>
+                            <th className="px-2 py-2">Mes</th>
+                            <th className="px-2 py-2 text-right">Agua M3</th>
+                            <th className="px-2 py-2 text-right">Energía Kw</th>
+                            <th className="px-2 py-2 text-right">Admin.</th>
+                            <th className="px-2 py-2 text-right">Personal</th>
+                            <th className="px-2 py-2 text-right">Agua/admin (M3)</th>
+                            <th className="px-2 py-2 text-right">Energía/admin (Kw)</th>
+                            <th className="px-2 py-2">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {publicServiceIndicatorRecords.length === 0 ? (
+                            <tr>
+                              <td colSpan={9} className="px-2 py-6 text-center text-gray-400">
+                                No hay indicadores registrados.
+                              </td>
+                            </tr>
+                          ) : (
+                            [...publicServiceIndicatorRecords]
+                              .sort((a, b) => b.year - a.year || b.month - a.month)
+                              .map((row) => {
+                                const ratios = computePublicServiceIndicatorRatios(row);
+                                return (
+                                  <tr key={row.id} className="border-b border-[#f1f3f6] hover:bg-gray-50">
+                                    <td className="px-2 py-2">{row.year}</td>
+                                    <td className="px-2 py-2 capitalize">{PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]}</td>
+                                    <td className="px-2 py-2 text-right">{row.waterM3.toLocaleString('es-CO')}</td>
+                                    <td className="px-2 py-2 text-right">{row.energyKwh.toLocaleString('es-CO')}</td>
+                                    <td className="px-2 py-2 text-right">{row.adminEmployees}</td>
+                                    <td className="px-2 py-2 text-right">{row.totalEmployees}</td>
+                                    <td className="px-2 py-2 text-right">
+                                      {ratios.waterPerAdminM3 === null ? '—' : ratios.waterPerAdminM3.toFixed(2)}
+                                    </td>
+                                    <td className="px-2 py-2 text-right">
+                                      {ratios.energyPerAdminKwh === null ? '—' : ratios.energyPerAdminKwh.toFixed(1)}
+                                    </td>
+                                    <td className="px-2 py-2">
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          onClick={() => handleEditPublicServiceIndicator(row)}
+                                          className="text-[#006b3d] hover:underline"
+                                        >
+                                          Editar
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeletePublicServiceIndicator(row)}
+                                          className="text-[#93000a] hover:underline"
+                                        >
+                                          Borrar
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    </>
+                    )}
                   </div>
                 )}
 
@@ -7402,9 +7698,10 @@ export default function App() {
                           </tr>
                         ) : (
                           publicServicesMonthlyTrend.map((row) => {
-                            const official = getPublicServiceOfficialIndicator(row.year, row.month);
-                            const energyPerEmployee = official ? official.energyPerEmployeeKwh : null;
-                            const waterPerEmployee = official ? official.waterPerEmployeeM3 : null;
+                            const indicator = publicServiceIndicatorByMonth.get(`${row.year}-${row.month}`) ?? null;
+                            const ratios = indicator ? computePublicServiceIndicatorRatios(indicator) : null;
+                            const energyPerEmployee = ratios ? ratios.energyPerAdminKwh : null;
+                            const waterPerEmployee = ratios ? ratios.waterPerAdminM3 : null;
                             const energyOk =
                               energyPerEmployee !== null && energyPerEmployee <= PUBLIC_SERVICES_TARGETS.energyPerEmployeeKwh;
                             const waterOk =
@@ -7420,7 +7717,7 @@ export default function App() {
                                   {waterPerEmployee === null ? '—' : `${waterPerEmployee.toFixed(1)} m³`}
                                 </td>
                                 <td className="px-2 py-2">
-                                  {official === null ? (
+                                  {indicator === null ? (
                                     <span className="text-gray-400">Sin dato de indicador</span>
                                   ) : (
                                     <span
