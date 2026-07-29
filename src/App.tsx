@@ -35,7 +35,8 @@ import {
   ShieldCheck,
   Zap,
   Leaf,
-  Users
+  Users,
+  ChevronDown
 } from 'lucide-react';
 import { Shipment, Driver, FleetVehicle, IncidentAlert, GpsPoint, OptimizedRoute, ShipmentStatus } from './types.ts';
 import { INITIAL_SHIPMENTS, INITIAL_DRIVERS, INITIAL_VEHICLES, INITIAL_ALERTS, COORDINATES_MAP } from './mockData.ts';
@@ -936,8 +937,52 @@ export default function App() {
     'Comportamientos inseguros',
     'Incapacidades',
     'Formación',
-    'Auditorías internas / externas'
+    'Auditorías internas / externas',
+    'Consumo servicios públicos',
+    'CO2 por kilometraje',
+    'Residuos de mantenimiento'
   ] as const;
+
+  // Estructura del menú "Gestión SGI": las 3 categorías se despliegan en acordeón y agrupan
+  // los módulos existentes. Consumo servicios públicos / CO2 por kilometraje / Residuos de
+  // mantenimiento (Ambiental) son secciones nuevas que por ahora solo muestran una página de
+  // "próximamente" — sus tablas, indicadores y gráficas se construirán en una siguiente etapa.
+  const sgiMenuCategories = [
+    {
+      key: 'calidad' as const,
+      label: 'Calidad',
+      items: [
+        { value: 'Acompañamiento presencial' as const, label: 'Acompañamientos' },
+        { value: 'Formación' as const, label: 'Formación' },
+        { value: 'Auditorías internas / externas' as const, label: 'Auditorías' }
+      ]
+    },
+    {
+      key: 'sst' as const,
+      label: 'SST y PEVS',
+      items: [
+        { value: 'Medicina del trabajo' as const, label: 'Medicina del trabajo' },
+        { value: 'Accidentalidad' as const, label: 'Accidentalidad' },
+        { value: 'Comportamientos inseguros' as const, label: 'Comportamiento inseguro' },
+        { value: 'Incapacidades' as const, label: 'Incapacidades' }
+      ]
+    },
+    {
+      key: 'ambiental' as const,
+      label: 'Ambiental',
+      items: [
+        { value: 'Consumo servicios públicos' as const, label: 'Consumo servicios públicos' },
+        { value: 'CO2 por kilometraje' as const, label: 'CO2 por kilometraje' },
+        { value: 'Residuos de mantenimiento' as const, label: 'Residuos de mantenimiento' }
+      ]
+    }
+  ];
+
+  const AMBIENTAL_PLACEHOLDER_ITEMS: readonly string[] = [
+    'Consumo servicios públicos',
+    'CO2 por kilometraje',
+    'Residuos de mantenimiento'
+  ];
 
   // State for operational database
   const [shipments, setShipments] = useState<Shipment[]>(() => {
@@ -968,6 +1013,7 @@ export default function App() {
   const [selectedMapNode, setSelectedMapNode] = useState<string | null>(null);
   const [selectedServiceMenuItem, setSelectedServiceMenuItem] = useState<(typeof serviceMenuItems)[number]>('Formación');
   const [isGsiMenuOpen, setIsGsiMenuOpen] = useState(true);
+  const [openSgiCategory, setOpenSgiCategory] = useState<'calidad' | 'sst' | 'ambiental' | null>('calidad');
   const [sgiSubIndicator, setSgiSubIndicator] = useState<'1' | '2' | '3' | '4'>('1');
   const [sgiDonutMetric, setSgiDonutMetric] = useState<'executed' | 'logistic' | 'sgi'>('executed');
   const [sgiStartDate, setSgiStartDate] = useState('');
@@ -5073,7 +5119,7 @@ export default function App() {
         }`}
       >
         <div className="flex items-start">
-          <aside className="w-72 bg-white border-y border-r border-[#eaecf0] shadow-md p-3 rounded-r-soft">
+          <aside className="w-72 bg-white border-y border-r border-[#eaecf0] shadow-md p-3 rounded-r-soft max-h-[calc(100vh-100px)] overflow-y-auto">
             <div className="flex items-center justify-between gap-2 mb-3">
               <h3 className="text-sm font-bold text-[#00502c] uppercase tracking-wide">Gestión SGI</h3>
               <span className="text-[10px] font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
@@ -5081,26 +5127,52 @@ export default function App() {
               </span>
             </div>
 
-            <div className="border border-[#eaecf0] rounded-soft">
-              {serviceMenuItems.map((item) => (
-                <button
-                  key={item}
-                  onClick={() => handleServiceMenuItemClick(item)}
-                  className={`w-full text-left px-3 py-2 text-sm border-b border-[#f1f3f6] last:border-b-0 transition-colors flex items-center justify-between gap-2 ${
-                    selectedServiceMenuItem === item
-                      ? 'bg-emerald-50 text-[#00502c] font-semibold'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <FileText size={14} />
-                    <span>{item}</span>
-                  </span>
-                  <span className="bg-[#00502c] text-white font-mono text-[9px] px-1.5 py-0.5 rounded-soft font-bold">
-                    SGI
-                  </span>
-                </button>
-              ))}
+            <div className="space-y-2">
+              {sgiMenuCategories.map((category) => {
+                const isOpen = openSgiCategory === category.key;
+                const hasSelected = category.items.some((it) => it.value === selectedServiceMenuItem);
+                return (
+                  <div key={category.key} className="border border-[#eaecf0] rounded-soft overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setOpenSgiCategory((prev) => (prev === category.key ? null : category.key))}
+                      className={`w-full text-left px-3 py-2.5 text-sm font-bold uppercase tracking-wide flex items-center justify-between gap-2 transition-colors ${
+                        hasSelected ? 'bg-emerald-50 text-[#00502c]' : 'bg-[#f8f9fa] text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span>{category.label}</span>
+                      <ChevronDown
+                        size={16}
+                        className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                    {isOpen && (
+                      <div className="border-t border-[#eaecf0]">
+                        {category.items.map((it) => (
+                          <button
+                            key={it.value}
+                            onClick={() => handleServiceMenuItemClick(it.value)}
+                            className={`w-full text-left pl-6 pr-3 py-2 text-sm border-b border-[#f1f3f6] last:border-b-0 transition-colors flex items-center justify-between gap-2 ${
+                              selectedServiceMenuItem === it.value
+                                ? 'bg-emerald-50 text-[#00502c] font-semibold'
+                                : 'text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              <FileText size={14} />
+                              <span>{it.label}</span>
+                            </span>
+                            <span className="bg-[#00502c] text-white font-mono text-[9px] px-1.5 py-0.5 rounded-soft font-bold">
+                              SGI
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </aside>
 
@@ -6368,6 +6440,21 @@ export default function App() {
                     Supabase pendiente de configurar
                   </span>
                 )}
+              </div>
+            )}
+            {AMBIENTAL_PLACEHOLDER_ITEMS.includes(selectedServiceMenuItem) && (
+              <div className="bg-white border border-[#eaecf0] rounded-soft p-10 shadow-sm text-center space-y-3">
+                <div className="mx-auto w-12 h-12 rounded-full bg-emerald-50 text-[#00502c] flex items-center justify-center">
+                  <Leaf size={22} />
+                </div>
+                <p className="text-sm font-bold text-[#00502c] uppercase tracking-wide">{selectedServiceMenuItem}</p>
+                <p className="text-sm text-gray-600 max-w-md mx-auto">
+                  Este módulo de Ambiental está en construcción. Muy pronto vas a poder registrar datos,
+                  ver indicadores, gráficas y descargar reportes aquí, igual que en los demás módulos del SGI.
+                </p>
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                  Próximamente
+                </span>
               </div>
             )}
             <div className="bg-white border border-[#eaecf0] rounded-soft p-4 shadow-sm space-y-4">
