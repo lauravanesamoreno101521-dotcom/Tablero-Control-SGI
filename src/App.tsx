@@ -1062,6 +1062,9 @@ export default function App() {
   const [publicServicesTab, setPublicServicesTab] = useState<'detalle' | 'tendencia' | 'metas'>('detalle');
   const [publicServicesYearFilter, setPublicServicesYearFilter] = useState('');
   const [publicServicesMonthFilter, setPublicServicesMonthFilter] = useState('');
+  const [showPublicServicesMonthRange, setShowPublicServicesMonthRange] = useState(false);
+  const [publicServicesMonthFromFilter, setPublicServicesMonthFromFilter] = useState('');
+  const [publicServicesMonthToFilter, setPublicServicesMonthToFilter] = useState('');
   const [publicServicesSedeFilter, setPublicServicesSedeFilter] = useState('');
   const [showPublicServicesEntry, setShowPublicServicesEntry] = useState(false);
   const [editingPublicServiceId, setEditingPublicServiceId] = useState<string | null>(null);
@@ -2542,13 +2545,27 @@ export default function App() {
   );
 
   const publicServicesFilteredRecords = useMemo(() => {
+    const fromMonth = publicServicesMonthFromFilter ? Number(publicServicesMonthFromFilter) : null;
+    const toMonth = publicServicesMonthToFilter ? Number(publicServicesMonthToFilter) : null;
     return publicServiceRecords.filter((row) => {
       if (publicServicesYearFilter && String(row.year) !== publicServicesYearFilter) return false;
-      if (publicServicesMonthFilter && String(row.month) !== publicServicesMonthFilter) return false;
+      if (fromMonth || toMonth) {
+        if (fromMonth && row.month < fromMonth) return false;
+        if (toMonth && row.month > toMonth) return false;
+      } else if (publicServicesMonthFilter && String(row.month) !== publicServicesMonthFilter) {
+        return false;
+      }
       if (publicServicesSedeFilter && row.sede !== publicServicesSedeFilter) return false;
       return true;
     });
-  }, [publicServiceRecords, publicServicesYearFilter, publicServicesMonthFilter, publicServicesSedeFilter]);
+  }, [
+    publicServiceRecords,
+    publicServicesYearFilter,
+    publicServicesMonthFilter,
+    publicServicesMonthFromFilter,
+    publicServicesMonthToFilter,
+    publicServicesSedeFilter
+  ]);
 
   const publicServicesKpis = useMemo(() => {
     const totalEnergyKwh = publicServicesFilteredRecords.reduce((sum, row) => sum + row.energyKwh, 0);
@@ -6799,18 +6816,71 @@ export default function App() {
                         <option key={`ps-year-${year}`} value={year}>{year}</option>
                       ))}
                     </select>
-                    <select
-                      value={publicServicesMonthFilter}
-                      onChange={(e) => setPublicServicesMonthFilter(e.target.value)}
-                      className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                    {!showPublicServicesMonthRange ? (
+                      <select
+                        value={publicServicesMonthFilter}
+                        onChange={(e) => setPublicServicesMonthFilter(e.target.value)}
+                        className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                      >
+                        <option value="">Todos los meses</option>
+                        {PUBLIC_SERVICES_MONTH_NAMES.map((name, index) => (
+                          <option key={`ps-month-${index + 1}`} value={String(index + 1)}>
+                            {name.charAt(0).toUpperCase() + name.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={publicServicesMonthFromFilter}
+                          onChange={(e) => setPublicServicesMonthFromFilter(e.target.value)}
+                          className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                        >
+                          <option value="">Mes desde</option>
+                          {PUBLIC_SERVICES_MONTH_NAMES.map((name, index) => (
+                            <option key={`ps-month-from-${index + 1}`} value={String(index + 1)}>
+                              {name.charAt(0).toUpperCase() + name.slice(1)}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="text-xs text-gray-400">a</span>
+                        <select
+                          value={publicServicesMonthToFilter}
+                          onChange={(e) => setPublicServicesMonthToFilter(e.target.value)}
+                          className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                        >
+                          <option value="">Mes hasta</option>
+                          {PUBLIC_SERVICES_MONTH_NAMES.map((name, index) => (
+                            <option key={`ps-month-to-${index + 1}`} value={String(index + 1)}>
+                              {name.charAt(0).toUpperCase() + name.slice(1)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowPublicServicesMonthRange((prev) => {
+                          const next = !prev;
+                          if (next) {
+                            setPublicServicesMonthFilter('');
+                          } else {
+                            setPublicServicesMonthFromFilter('');
+                            setPublicServicesMonthToFilter('');
+                          }
+                          return next;
+                        })
+                      }
+                      className={`px-2 py-1.5 rounded-soft text-xs font-semibold border transition-colors ${
+                        showPublicServicesMonthRange
+                          ? 'border-[#00502c] bg-[#00502c] text-white'
+                          : 'border-[#d6dce5] bg-white text-gray-700 hover:bg-gray-50'
+                      }`}
+                      title="Filtrar por rango de meses, por ejemplo de enero a marzo"
                     >
-                      <option value="">Todos los meses</option>
-                      {PUBLIC_SERVICES_MONTH_NAMES.map((name, index) => (
-                        <option key={`ps-month-${index + 1}`} value={String(index + 1)}>
-                          {name.charAt(0).toUpperCase() + name.slice(1)}
-                        </option>
-                      ))}
-                    </select>
+                      Rango de meses
+                    </button>
                     <select
                       value={publicServicesSedeFilter}
                       onChange={(e) => setPublicServicesSedeFilter(e.target.value)}
