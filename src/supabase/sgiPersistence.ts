@@ -7,6 +7,7 @@ export const SGI_DATASET_KEYS = {
   formacion: 'formacion_bd',
   accidentalidad: 'accidentalidad_bd',
   medicinaTrabajo: 'medicina_trabajo_bd',
+  publicServices: 'public_services_bd',
   incapInformeEdits: 'incap_informe_edits',
   formacionInformeEdits: 'formacion_informe_edits'
 } as const;
@@ -20,6 +21,7 @@ export type SgiPersistedDatasets = {
   formacion: unknown[];
   accidentalidad: unknown[];
   medicinaTrabajo: unknown[];
+  publicServices: unknown[];
   incapInformeEdits: Record<string, unknown>;
   formacionInformeEdits: Record<string, unknown>;
 };
@@ -117,6 +119,7 @@ export async function loadSgiDatasetsFromSupabase(
     formacionRaw,
     accidentalidadRaw,
     medicinaTrabajoRaw,
+    publicServicesRaw,
     incapInformeEditsRaw,
     formacionInformeEditsRaw
   ] = await Promise.all([
@@ -126,6 +129,7 @@ export async function loadSgiDatasetsFromSupabase(
     loadDataset(SGI_DATASET_KEYS.formacion),
     loadDataset(SGI_DATASET_KEYS.accidentalidad),
     loadDataset(SGI_DATASET_KEYS.medicinaTrabajo),
+    loadDataset(SGI_DATASET_KEYS.publicServices),
     loadDataset(SGI_DATASET_KEYS.incapInformeEdits),
     loadDataset(SGI_DATASET_KEYS.formacionInformeEdits)
   ]);
@@ -148,6 +152,9 @@ export async function loadSgiDatasetsFromSupabase(
   const medicinaTrabajo = hasArrayData(medicinaTrabajoRaw)
     ? (reviveDates(medicinaTrabajoRaw) as unknown[])
     : baselines.medicinaTrabajo;
+  const publicServices = hasArrayData(publicServicesRaw)
+    ? (reviveDates(publicServicesRaw) as unknown[])
+    : baselines.publicServices;
   const incapInformeEdits = hasObjectData(incapInformeEditsRaw)
     ? (incapInformeEditsRaw as Record<string, unknown>)
     : baselines.incapInformeEdits;
@@ -162,6 +169,7 @@ export async function loadSgiDatasetsFromSupabase(
     formacion,
     accidentalidad,
     medicinaTrabajo,
+    publicServices,
     incapInformeEdits,
     formacionInformeEdits
   };
@@ -173,6 +181,7 @@ export async function loadSgiDatasetsFromSupabase(
   if (!hasArrayData(formacionRaw)) seedPayload.formacion = baselines.formacion;
   if (!hasArrayData(accidentalidadRaw)) seedPayload.accidentalidad = baselines.accidentalidad;
   if (!hasArrayData(medicinaTrabajoRaw)) seedPayload.medicinaTrabajo = baselines.medicinaTrabajo;
+  if (!hasArrayData(publicServicesRaw)) seedPayload.publicServices = baselines.publicServices;
   if (!hasObjectData(incapInformeEditsRaw)) seedPayload.incapInformeEdits = baselines.incapInformeEdits;
   if (!hasObjectData(formacionInformeEditsRaw)) seedPayload.formacionInformeEdits = baselines.formacionInformeEdits;
 
@@ -185,6 +194,7 @@ export async function loadSgiDatasetsFromSupabase(
         formacion: seedPayload.formacion ?? loaded.formacion,
         accidentalidad: seedPayload.accidentalidad ?? loaded.accidentalidad,
         medicinaTrabajo: seedPayload.medicinaTrabajo ?? loaded.medicinaTrabajo,
+        publicServices: seedPayload.publicServices ?? loaded.publicServices,
         incapInformeEdits: seedPayload.incapInformeEdits ?? loaded.incapInformeEdits,
         formacionInformeEdits: seedPayload.formacionInformeEdits ?? loaded.formacionInformeEdits
       },
@@ -208,6 +218,7 @@ export async function persistSgiDatasetsToSupabase(
     saveDataset(SGI_DATASET_KEYS.formacion, datasets.formacion, updatedByEmail),
     saveDataset(SGI_DATASET_KEYS.accidentalidad, datasets.accidentalidad, updatedByEmail),
     saveDataset(SGI_DATASET_KEYS.medicinaTrabajo, datasets.medicinaTrabajo, updatedByEmail),
+    saveDataset(SGI_DATASET_KEYS.publicServices, datasets.publicServices, updatedByEmail),
     saveDataset(SGI_DATASET_KEYS.incapInformeEdits, datasets.incapInformeEdits, updatedByEmail),
     saveDataset(SGI_DATASET_KEYS.formacionInformeEdits, datasets.formacionInformeEdits, updatedByEmail)
   ]);

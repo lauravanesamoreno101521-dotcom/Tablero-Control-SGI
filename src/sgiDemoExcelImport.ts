@@ -6,13 +6,15 @@ import {
 } from './incapDateUtils.ts';
 import { normalizeFormacionModality, normalizeFormacionClient } from './formacionInformeDemo.ts';
 import { normalizeMedicinaCity, normalizeMedicinaExamStatus } from './medicinaTrabajoDemo.ts';
+import { normalizePublicServiceSede } from './publicServicesDemo.ts';
 
 export type SgiDemoExcelService =
   | 'Acompañamiento presencial'
   | 'Comportamientos inseguros'
   | 'Incapacidades'
   | 'Formación'
-  | 'Medicina del trabajo';
+  | 'Medicina del trabajo'
+  | 'Consumo servicios públicos';
 
 const normalizeText = (value: unknown) =>
   String(value ?? '')
@@ -276,6 +278,8 @@ export async function importDemoExcelForService(
       return importSstRecords(workbook, XLSX);
     case 'Medicina del trabajo':
       return importMedicinaRecords(workbook, XLSX);
+    case 'Consumo servicios públicos':
+      return importPublicServiceRecords(workbook, XLSX);
     default:
       throw new Error('Servicio no soportado para carga de Excel.');
   }
@@ -565,6 +569,67 @@ async function importMedicinaRecords(workbook: import('xlsx').WorkBook, XLSX: ty
 
   if (records.length === 0) {
     throw new Error('El Excel no contiene registros válidos de medicina del trabajo. Verifica que tenga una hoja "Tablero control" con columnas DOCUMENTO y NOMBRE COMPLETO.');
+  }
+
+  return { count: records.length, records };
+}
+
+const PUBLIC_SERVICE_MONTH_NAMES: Record<string, number> = {
+  ENERO: 1,
+  FEBRERO: 2,
+  MARZO: 3,
+  ABRIL: 4,
+  MAYO: 5,
+  JUNIO: 6,
+  JULIO: 7,
+  AGOSTO: 8,
+  SEPTIEMBRE: 9,
+  OCTUBRE: 10,
+  NOVIEMBRE: 11,
+  DICIEMBRE: 12
+};
+
+async function importPublicServiceRecords(workbook: import('xlsx').WorkBook, XLSX: typeof import('xlsx')) {
+  const sheetNames = workbook.SheetNames.filter((name) => /consolidado/i.test(name));
+  const targetSheets = sheetNames.length > 0 ? sheetNames : [workbook.SheetNames[0]];
+
+  const records: unknown[] = [];
+
+  targetSheets.forEach((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) return;
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+    const yearFromSheetName = Number((sheetName.match(/20\d{2}/) || [])[0]) || null;
+
+    rows.forEach((row) => {
+      const mesRaw = pickField(row, ['mes']).trim().toUpperCase();
+      const month = PUBLIC_SERVICE_MONTH_NAMES[mesRaw];
+      const sede = pickField(row, ['agencia / sede', 'agencia/sede', 'sede']);
+      const yearRaw = toNumberOrZero(pickField(row, ['ano', 'año']));
+      const year = yearRaw > 0 ? yearRaw : yearFromSheetName;
+      if (!month || !sede || !year) return;
+
+      records.push({
+        id: `psr-${Date.now()}-${records.length}`,
+        year,
+        month,
+        sede: normalizePublicServiceSede(sede),
+        energyValue: toNumberOrZero(pickField(row, ['valor energia'])),
+        energyKwh: toNumberOrZero(pickField(row, ['kw energia'])),
+        waterValue: toNumberOrZero(pickField(row, ['valor aguas', 'valor agua'])),
+        waterAcueducto: toNumberOrZero(pickField(row, ['m3 acueduct'])),
+        waterAlcantarillado: toNumberOrZero(pickField(row, ['m3 alcantaril'])),
+        totalWater: toNumberOrZero(pickField(row, ['total agua'])),
+        totalInvoice: toNumberOrZero(pickField(row, ['total factura'])),
+        note: pickField(row, ['nota'])
+      });
+    });
+  });
+
+  if (records.length === 0) {
+    throw new Error(
+      'El Excel no contiene registros válidos de consumo de servicios públicos. Verifica que tenga columnas Mes, Agencia / sede, Kw Energía, M°3 ACUEDUCT, M°3 ALCANTARIL y TOTAL FACTURA.'
+    );
   }
 
   return { count: records.length, records };

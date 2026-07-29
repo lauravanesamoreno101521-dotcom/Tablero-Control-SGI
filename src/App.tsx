@@ -152,6 +152,14 @@ import {
   type AuditoriaExternaRecord,
   type AuditoriaInternaRecord
 } from './auditoriasDemo.ts';
+import {
+  INITIAL_PUBLIC_SERVICE_RECORDS,
+  PUBLIC_SERVICES_MONTH_NAMES,
+  PUBLIC_SERVICES_TARGETS,
+  getPublicServiceAdminEmployees,
+  normalizePublicServiceSede,
+  type PublicServiceRecord
+} from './publicServicesDemo.ts';
 
 type IncapInformeByYear = Record<string, unknown[][]>;
 
@@ -985,7 +993,6 @@ export default function App() {
   };
 
   const AMBIENTAL_PLACEHOLDER_ITEMS: readonly string[] = [
-    'Consumo servicios públicos',
     'CO2 por kilometraje',
     'Residuos de mantenimiento'
   ];
@@ -1051,6 +1058,24 @@ export default function App() {
     totalFindings: '',
     closedFindings: '',
     score: ''
+  });
+  const [publicServicesTab, setPublicServicesTab] = useState<'detalle' | 'sede' | 'tendencia' | 'metas'>('detalle');
+  const [publicServicesYearFilter, setPublicServicesYearFilter] = useState('');
+  const [publicServicesMonthFilter, setPublicServicesMonthFilter] = useState('');
+  const [publicServicesSedeFilter, setPublicServicesSedeFilter] = useState('');
+  const [showPublicServicesEntry, setShowPublicServicesEntry] = useState(false);
+  const [editingPublicServiceId, setEditingPublicServiceId] = useState<string | null>(null);
+  const [publicServiceForm, setPublicServiceForm] = useState({
+    year: String(new Date().getFullYear()),
+    month: '',
+    sede: '',
+    energyKwh: '',
+    energyValue: '',
+    waterAcueducto: '',
+    waterAlcantarillado: '',
+    waterValue: '',
+    totalInvoice: '',
+    note: ''
   });
   const sgiDonutRef = useRef<HTMLDivElement | null>(null);
   const supabaseSyncReadyRef = useRef(false);
@@ -1522,6 +1547,10 @@ export default function App() {
     () => initialMedicinaTrabajoRecords
   );
 
+  const [publicServiceRecords, setPublicServiceRecords] = useState<PublicServiceRecord[]>(
+    () => INITIAL_PUBLIC_SERVICE_RECORDS
+  );
+
   const buildSgiDatasetBaselines = (): SgiPersistedDatasets => ({
     acompanamiento: initialSstVisits,
     comportamientos: initialUnsafeBehaviorRecords,
@@ -1529,6 +1558,7 @@ export default function App() {
     formacion: initialFormacionRecords,
     accidentalidad: initialAccidentalidadRecords,
     medicinaTrabajo: initialMedicinaTrabajoRecords,
+    publicServices: INITIAL_PUBLIC_SERVICE_RECORDS,
     incapInformeEdits: {},
     formacionInformeEdits: {}
   });
@@ -1545,6 +1575,12 @@ export default function App() {
     );
     setMedicinaTrabajoRecords(
       (datasets.medicinaTrabajo as MedicinaTrabajoRecord[]).map(withNormalizedMedicinaRecord)
+    );
+    setPublicServiceRecords(
+      (datasets.publicServices as PublicServiceRecord[]).map((row) => ({
+        ...row,
+        sede: normalizePublicServiceSede(row.sede)
+      }))
     );
     setIncapDemoInformeEdits(
       datasets.incapInformeEdits as Record<number, Partial<IncapInformeMonthlyInputs & IncapInformeManualBdEdits>>
@@ -1653,6 +1689,7 @@ export default function App() {
           formacion: formacionRecords,
           accidentalidad: accidentalidadRecords,
           medicinaTrabajo: medicinaTrabajoRecords,
+          publicServices: publicServiceRecords,
           incapInformeEdits: incapDemoInformeEdits,
           formacionInformeEdits: formacionDemoInformeEdits
         },
@@ -1668,6 +1705,7 @@ export default function App() {
     formacionRecords,
     accidentalidadRecords,
     medicinaTrabajoRecords,
+    publicServiceRecords,
     incapDemoInformeEdits,
     formacionDemoInformeEdits,
     isDbTestConnected,
@@ -2489,6 +2527,83 @@ export default function App() {
     () => groupMedicinaRecords(medicinaFilteredRecords, (row) => row.ips || 'Sin IPS'),
     [medicinaFilteredRecords]
   );
+
+  const publicServicesYearOptions = useMemo(
+    () =>
+      Array.from(new Set(publicServiceRecords.map((row) => row.year)))
+        .sort((a, b) => b - a)
+        .map(String),
+    [publicServiceRecords]
+  );
+
+  const publicServicesSedeOptions = useMemo(
+    () => Array.from(new Set(publicServiceRecords.map((row) => row.sede))).sort(),
+    [publicServiceRecords]
+  );
+
+  const publicServicesFilteredRecords = useMemo(() => {
+    return publicServiceRecords.filter((row) => {
+      if (publicServicesYearFilter && String(row.year) !== publicServicesYearFilter) return false;
+      if (publicServicesMonthFilter && String(row.month) !== publicServicesMonthFilter) return false;
+      if (publicServicesSedeFilter && row.sede !== publicServicesSedeFilter) return false;
+      return true;
+    });
+  }, [publicServiceRecords, publicServicesYearFilter, publicServicesMonthFilter, publicServicesSedeFilter]);
+
+  const publicServicesKpis = useMemo(() => {
+    const totalEnergyKwh = publicServicesFilteredRecords.reduce((sum, row) => sum + row.energyKwh, 0);
+    const totalWaterM3 = publicServicesFilteredRecords.reduce(
+      (sum, row) => sum + row.waterAcueducto + row.waterAlcantarillado,
+      0
+    );
+    const totalInvoice = publicServicesFilteredRecords.reduce((sum, row) => sum + row.totalInvoice, 0);
+
+    const bySede = new Map<string, number>();
+    publicServicesFilteredRecords.forEach((row) => {
+      bySede.set(row.sede, (bySede.get(row.sede) ?? 0) + row.totalInvoice);
+    });
+    let topSede: { sede: string; total: number } | null = null;
+    bySede.forEach((total, sede) => {
+      if (!topSede || total > topSede.total) topSede = { sede, total };
+    });
+
+    const monthsPresent = new Set(publicServicesFilteredRecords.map((row) => `${row.year}-${row.month}`));
+    let employeeDenominator = 0;
+    monthsPresent.forEach((key) => {
+      const [year, month] = key.split('-').map(Number);
+      employeeDenominator += getPublicServiceAdminEmployees(year, month) ?? 0;
+    });
+
+    const energyPerEmployee = employeeDenominator > 0 ? totalEnergyKwh / employeeDenominator : null;
+    const waterPerEmployee = employeeDenominator > 0 ? totalWaterM3 / employeeDenominator : null;
+
+    return { totalEnergyKwh, totalWaterM3, totalInvoice, topSede, energyPerEmployee, waterPerEmployee };
+  }, [publicServicesFilteredRecords]);
+
+  const publicServicesBySedeStats = useMemo(() => {
+    const map = new Map<string, { sede: string; energyKwh: number; waterM3: number; invoice: number }>();
+    publicServicesFilteredRecords.forEach((row) => {
+      const entry = map.get(row.sede) ?? { sede: row.sede, energyKwh: 0, waterM3: 0, invoice: 0 };
+      entry.energyKwh += row.energyKwh;
+      entry.waterM3 += row.waterAcueducto + row.waterAlcantarillado;
+      entry.invoice += row.totalInvoice;
+      map.set(row.sede, entry);
+    });
+    return Array.from(map.values()).sort((a, b) => b.invoice - a.invoice);
+  }, [publicServicesFilteredRecords]);
+
+  const publicServicesMonthlyTrend = useMemo(() => {
+    const map = new Map<string, { year: number; month: number; energyKwh: number; waterM3: number; invoice: number }>();
+    publicServicesFilteredRecords.forEach((row) => {
+      const key = `${row.year}-${row.month}`;
+      const entry = map.get(key) ?? { year: row.year, month: row.month, energyKwh: 0, waterM3: 0, invoice: 0 };
+      entry.energyKwh += row.energyKwh;
+      entry.waterM3 += row.waterAcueducto + row.waterAlcantarillado;
+      entry.invoice += row.totalInvoice;
+      map.set(key, entry);
+    });
+    return Array.from(map.values()).sort((a, b) => (a.year - b.year) || (a.month - b.month));
+  }, [publicServicesFilteredRecords]);
 
   const medicinaContractStats = useMemo(
     () => groupMedicinaRecords(medicinaFilteredRecords, (row) => row.contract || 'Sin contrato'),
@@ -3966,6 +4081,32 @@ export default function App() {
     };
   };
 
+  // El Excel de Consumo servicios públicos se agrega igual que los demás módulos: se identifica
+  // cada registro por año + mes + sede para no duplicar si el mismo archivo se carga dos veces.
+  const buildPublicServiceRecordKey = (record: PublicServiceRecord) =>
+    [record.year, record.month, record.sede].join('|');
+
+  const mergePublicServiceRecords = (existing: PublicServiceRecord[], imported: PublicServiceRecord[]) => {
+    const existingKeys = new Set(existing.map(buildPublicServiceRecordKey));
+    const toAdd: PublicServiceRecord[] = [];
+
+    imported.forEach((record, index) => {
+      const key = buildPublicServiceRecordKey(record);
+      if (existingKeys.has(key)) return;
+      existingKeys.add(key);
+      toAdd.push({
+        ...record,
+        id: `psr-${Date.now()}-${index}`
+      });
+    });
+
+    return {
+      merged: [...existing, ...toAdd],
+      added: toAdd.length,
+      skipped: imported.length - toAdd.length
+    };
+  };
+
   // Igual que Formación y Medicina del trabajo: los registros del Excel se AGREGAN a los que
   // ya existen (no se reemplaza toda la base). El archivo maestro de comportamientos
   // inseguros trae los años recientes en una hoja separada ("2026 INFRACCIONES") de solo ~74
@@ -4375,6 +4516,112 @@ export default function App() {
     resetMedicinaForm();
   };
 
+  const resetPublicServiceForm = () => {
+    setPublicServiceForm({
+      year: String(new Date().getFullYear()),
+      month: '',
+      sede: '',
+      energyKwh: '',
+      energyValue: '',
+      waterAcueducto: '',
+      waterAlcantarillado: '',
+      waterValue: '',
+      totalInvoice: '',
+      note: ''
+    });
+    setEditingPublicServiceId(null);
+  };
+
+  const handleDeletePublicServiceRecord = (row: PublicServiceRecord) => {
+    const confirmed = window.confirm(
+      `¿Eliminar el registro de ${row.sede} (${PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]} ${row.year})? Esta acción no se puede deshacer.`
+    );
+    if (!confirmed) return;
+    setPublicServiceRecords((prev) => prev.filter((item) => item.id !== row.id));
+    if (editingPublicServiceId === row.id) resetPublicServiceForm();
+  };
+
+  const handleEditPublicServiceRecord = (row: PublicServiceRecord) => {
+    setEditingPublicServiceId(row.id);
+    setPublicServiceForm({
+      year: String(row.year),
+      month: String(row.month),
+      sede: row.sede,
+      energyKwh: String(row.energyKwh),
+      energyValue: String(row.energyValue),
+      waterAcueducto: String(row.waterAcueducto),
+      waterAlcantarillado: String(row.waterAlcantarillado),
+      waterValue: String(row.waterValue),
+      totalInvoice: String(row.totalInvoice),
+      note: row.note
+    });
+  };
+
+  const handlePublicServiceFormSubmit = () => {
+    const year = Number(publicServiceForm.year);
+    const month = Number(publicServiceForm.month);
+    if (!year || !month || !publicServiceForm.sede.trim()) {
+      alert('Completa año, mes y sede para registrar.');
+      return;
+    }
+
+    const nextId = editingPublicServiceId ?? `psr-${Date.now()}`;
+    const nextRecord: PublicServiceRecord = {
+      id: nextId,
+      year,
+      month,
+      sede: normalizePublicServiceSede(publicServiceForm.sede.trim()),
+      energyKwh: Number(publicServiceForm.energyKwh) || 0,
+      energyValue: Number(publicServiceForm.energyValue) || 0,
+      waterAcueducto: Number(publicServiceForm.waterAcueducto) || 0,
+      waterAlcantarillado: Number(publicServiceForm.waterAlcantarillado) || 0,
+      waterValue: Number(publicServiceForm.waterValue) || 0,
+      totalWater: (Number(publicServiceForm.waterValue) || 0),
+      totalInvoice: Number(publicServiceForm.totalInvoice) || 0,
+      note: publicServiceForm.note.trim()
+    };
+
+    if (editingPublicServiceId) {
+      setPublicServiceRecords((prev) => prev.map((row) => (row.id === editingPublicServiceId ? nextRecord : row)));
+    } else {
+      setPublicServiceRecords((prev) => [nextRecord, ...prev]);
+    }
+
+    resetPublicServiceForm();
+  };
+
+  const handleDownloadPublicServicesReport = async () => {
+    if (publicServicesFilteredRecords.length === 0) {
+      alert('No hay registros de consumo de servicios públicos para exportar con el filtro actual.');
+      return;
+    }
+    const XLSX = await import('xlsx');
+    const rows = publicServicesFilteredRecords.map((row) => ({
+      AÑO: row.year,
+      MES: PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]?.toUpperCase() ?? row.month,
+      'AGENCIA / SEDE': row.sede,
+      'KW ENERGÍA': row.energyKwh,
+      'VALOR ENERGÍA': row.energyValue,
+      'M3 ACUEDUCTO': row.waterAcueducto,
+      'M3 ALCANTARILLADO': row.waterAlcantarillado,
+      'VALOR AGUA': row.waterValue,
+      'TOTAL FACTURA': row.totalInvoice,
+      NOTA: row.note
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet['!cols'] = [
+      { wch: 8 }, { wch: 12 }, { wch: 24 }, { wch: 12 }, { wch: 14 },
+      { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 20 }
+    ];
+    worksheet['!autofilter'] = { ref: 'A1:J1' };
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Consumo servicios publicos');
+    const yearSuffix = publicServicesYearFilter ? `_${publicServicesYearFilter}` : '';
+    XLSX.writeFile(workbook, `reporte_consumo_servicios_publicos${yearSuffix}.xlsx`);
+  };
+
   const handleDemoExcelUpload = async (file: File) => {
     const service = selectedServiceMenuItem as SgiDemoExcelService;
     const supportedServices: SgiDemoExcelService[] = [
@@ -4382,7 +4629,8 @@ export default function App() {
       'Comportamientos inseguros',
       'Incapacidades',
       'Formación',
-      'Medicina del trabajo'
+      'Medicina del trabajo',
+      'Consumo servicios públicos'
     ];
 
     if (!supportedServices.includes(service)) {
@@ -4433,6 +4681,20 @@ export default function App() {
         resetMedicinaForm();
         setSgiStartDate('');
         setSgiEndDate('');
+        alert(
+          `Se agregaron ${outcome.added} registros nuevos desde "${file.name}"` +
+            `${outcome.skipped ? ` (${outcome.skipped} duplicados omitidos)` : ''}. ` +
+            `Total en base de datos: ${outcome.merged.length}.`
+        );
+        return;
+      } else if (service === 'Consumo servicios públicos') {
+        const imported = (result.records as PublicServiceRecord[]).map((row) => ({
+          ...row,
+          sede: normalizePublicServiceSede(row.sede)
+        }));
+        const outcome = mergePublicServiceRecords(publicServiceRecords, imported);
+        setPublicServiceRecords(outcome.merged);
+        resetPublicServiceForm();
         alert(
           `Se agregaron ${outcome.added} registros nuevos desde "${file.name}"` +
             `${outcome.skipped ? ` (${outcome.skipped} duplicados omitidos)` : ''}. ` +
@@ -4877,6 +5139,7 @@ export default function App() {
     setFormacionRecords(initialFormacionRecords.map((row) => ({ ...row })));
     setAccidentalidadRecords(initialAccidentalidadRecords.map((row) => ({ ...row })));
     setMedicinaTrabajoRecords(initialMedicinaTrabajoRecords.map((row) => ({ ...row })));
+    setPublicServiceRecords(INITIAL_PUBLIC_SERVICE_RECORDS.map((row) => ({ ...row })));
     setIncapDemoInformeEdits({});
     setFormacionDemoInformeEdits({});
     setSgiStartDate('');
@@ -6489,6 +6752,493 @@ export default function App() {
                 </span>
               </div>
             )}
+
+            {selectedServiceMenuItem === 'Consumo servicios públicos' && (
+              <div className="bg-white border border-[#eaecf0] rounded-soft p-4 shadow-sm space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {sgiCanEditDatasets && (
+                      <button
+                        onClick={() => setShowPublicServicesEntry((prev) => !prev)}
+                        className={`px-3 py-2 rounded-soft text-xs font-semibold border transition-colors ${
+                          showPublicServicesEntry
+                            ? 'border-[#00502c] bg-[#00502c] text-white'
+                            : 'border-[#d6dce5] bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        Ingreso base de datos
+                      </button>
+                    )}
+                    <button
+                      onClick={handleDownloadPublicServicesReport}
+                      className="px-3 py-2 rounded-soft text-xs font-semibold border border-[#006b3d] bg-[#006b3d] text-white hover:bg-[#00502c] transition-colors"
+                    >
+                      Descargar reporte
+                    </button>
+                    {sgiCanEditDatasets && (
+                      <DemoExcelUploadButton onFileSelected={handleDemoExcelUpload} loading={isDemoExcelLoading} />
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={publicServicesYearFilter}
+                      onChange={(e) => setPublicServicesYearFilter(e.target.value)}
+                      className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                    >
+                      <option value="">Todos los años</option>
+                      {publicServicesYearOptions.map((year) => (
+                        <option key={`ps-year-${year}`} value={year}>{year}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={publicServicesMonthFilter}
+                      onChange={(e) => setPublicServicesMonthFilter(e.target.value)}
+                      className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                    >
+                      <option value="">Todos los meses</option>
+                      {PUBLIC_SERVICES_MONTH_NAMES.map((name, index) => (
+                        <option key={`ps-month-${index + 1}`} value={String(index + 1)}>
+                          {name.charAt(0).toUpperCase() + name.slice(1)}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={publicServicesSedeFilter}
+                      onChange={(e) => setPublicServicesSedeFilter(e.target.value)}
+                      className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white max-w-[180px]"
+                    >
+                      <option value="">Todas las sedes</option>
+                      {publicServicesSedeOptions.map((sede) => (
+                        <option key={`ps-sede-${sede}`} value={sede}>{sede}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    { key: 'detalle', label: 'Detalle general' },
+                    { key: 'sede', label: 'Análisis por sede' },
+                    { key: 'tendencia', label: 'Tendencia mensual' },
+                    { key: 'metas', label: 'Cumplimiento de metas' }
+                  ] as const).map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setPublicServicesTab(tab.key)}
+                      className={`px-3 py-1.5 rounded-soft text-xs font-semibold transition-colors ${
+                        publicServicesTab === tab.key
+                          ? 'bg-[#00502c] text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-gray-50 rounded-soft p-3.5">
+                    <p className="text-xs text-gray-500 flex items-center gap-1.5"><Zap size={13} />Energía total</p>
+                    <p className="text-xl font-bold text-[#191c1d] mt-1">
+                      {Math.round(publicServicesKpis.totalEnergyKwh).toLocaleString('es-CO')} kWh
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-soft p-3.5">
+                    <p className="text-xs text-gray-500 flex items-center gap-1.5"><Layers size={13} />Agua total</p>
+                    <p className="text-xl font-bold text-[#191c1d] mt-1">
+                      {Math.round(publicServicesKpis.totalWaterM3).toLocaleString('es-CO')} m³
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-soft p-3.5">
+                    <p className="text-xs text-gray-500 flex items-center gap-1.5"><Hash size={13} />Valor factura</p>
+                    <p className="text-xl font-bold text-[#191c1d] mt-1">
+                      ${Math.round(publicServicesKpis.totalInvoice).toLocaleString('es-CO')}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-soft p-3.5">
+                    <p className="text-xs text-gray-500 flex items-center gap-1.5"><ShieldCheck size={13} />Mayor consumo</p>
+                    {publicServicesKpis.topSede ? (
+                      <>
+                        <p className="text-sm font-bold text-[#191c1d] mt-1">{publicServicesKpis.topSede.sede}</p>
+                        <p className="text-[11px] text-gray-500">
+                          ${Math.round(publicServicesKpis.topSede.total).toLocaleString('es-CO')}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-400 mt-1">Sin datos</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(() => {
+                    const energyOk =
+                      publicServicesKpis.energyPerEmployee !== null &&
+                      publicServicesKpis.energyPerEmployee <= PUBLIC_SERVICES_TARGETS.energyPerEmployeeKwh;
+                    return (
+                      <div
+                        className={`rounded-soft p-3.5 flex items-center justify-between gap-3 ${
+                          publicServicesKpis.energyPerEmployee === null
+                            ? 'bg-gray-50'
+                            : energyOk
+                              ? 'bg-emerald-50'
+                              : 'bg-red-50'
+                        }`}
+                      >
+                        <div>
+                          <p
+                            className={`text-xs font-semibold ${
+                              publicServicesKpis.energyPerEmployee === null
+                                ? 'text-gray-500'
+                                : energyOk
+                                  ? 'text-[#00502c]'
+                                  : 'text-[#93000a]'
+                            }`}
+                          >
+                            Energía por empleado
+                          </p>
+                          <p className="text-[11px] text-gray-500">
+                            Meta ≤{PUBLIC_SERVICES_TARGETS.energyPerEmployeeKwh} kWh/mes
+                          </p>
+                        </div>
+                        <span
+                          className={`text-lg font-bold ${
+                            publicServicesKpis.energyPerEmployee === null
+                              ? 'text-gray-400'
+                              : energyOk
+                                ? 'text-[#00502c]'
+                                : 'text-[#93000a]'
+                          }`}
+                        >
+                          {publicServicesKpis.energyPerEmployee === null
+                            ? 'Sin datos'
+                            : `${publicServicesKpis.energyPerEmployee.toFixed(1)} kWh`}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                  {(() => {
+                    const waterOk =
+                      publicServicesKpis.waterPerEmployee !== null &&
+                      publicServicesKpis.waterPerEmployee <= PUBLIC_SERVICES_TARGETS.waterPerEmployeeM3;
+                    return (
+                      <div
+                        className={`rounded-soft p-3.5 flex items-center justify-between gap-3 ${
+                          publicServicesKpis.waterPerEmployee === null
+                            ? 'bg-gray-50'
+                            : waterOk
+                              ? 'bg-emerald-50'
+                              : 'bg-red-50'
+                        }`}
+                      >
+                        <div>
+                          <p
+                            className={`text-xs font-semibold ${
+                              publicServicesKpis.waterPerEmployee === null
+                                ? 'text-gray-500'
+                                : waterOk
+                                  ? 'text-[#00502c]'
+                                  : 'text-[#93000a]'
+                            }`}
+                          >
+                            Agua por empleado
+                          </p>
+                          <p className="text-[11px] text-gray-500">
+                            Meta ≤{PUBLIC_SERVICES_TARGETS.waterPerEmployeeM3} m³/mes
+                          </p>
+                        </div>
+                        <span
+                          className={`text-lg font-bold ${
+                            publicServicesKpis.waterPerEmployee === null
+                              ? 'text-gray-400'
+                              : waterOk
+                                ? 'text-[#00502c]'
+                                : 'text-[#93000a]'
+                          }`}
+                        >
+                          {publicServicesKpis.waterPerEmployee === null
+                            ? 'Sin datos'
+                            : `${publicServicesKpis.waterPerEmployee.toFixed(1)} m³`}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {showPublicServicesEntry && sgiCanEditDatasets && (
+                  <div className="border border-[#eaecf0] rounded-soft p-3.5 bg-gray-50 space-y-3">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      <input
+                        type="number"
+                        placeholder="Año"
+                        value={publicServiceForm.year}
+                        onChange={(e) => setPublicServiceForm((p) => ({ ...p, year: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <select
+                        value={publicServiceForm.month}
+                        onChange={(e) => setPublicServiceForm((p) => ({ ...p, month: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      >
+                        <option value="">Mes</option>
+                        {PUBLIC_SERVICES_MONTH_NAMES.map((name, index) => (
+                          <option key={`ps-form-month-${index + 1}`} value={String(index + 1)}>
+                            {name.charAt(0).toUpperCase() + name.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        placeholder="Agencia / sede"
+                        value={publicServiceForm.sede}
+                        onChange={(e) => setPublicServiceForm((p) => ({ ...p, sede: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm md:col-span-2"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Kw Energía"
+                        value={publicServiceForm.energyKwh}
+                        onChange={(e) => setPublicServiceForm((p) => ({ ...p, energyKwh: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Valor energía"
+                        value={publicServiceForm.energyValue}
+                        onChange={(e) => setPublicServiceForm((p) => ({ ...p, energyValue: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="M3 acueducto"
+                        value={publicServiceForm.waterAcueducto}
+                        onChange={(e) => setPublicServiceForm((p) => ({ ...p, waterAcueducto: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="M3 alcantarillado"
+                        value={publicServiceForm.waterAlcantarillado}
+                        onChange={(e) => setPublicServiceForm((p) => ({ ...p, waterAlcantarillado: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Valor agua"
+                        value={publicServiceForm.waterValue}
+                        onChange={(e) => setPublicServiceForm((p) => ({ ...p, waterValue: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Total factura"
+                        value={publicServiceForm.totalInvoice}
+                        onChange={(e) => setPublicServiceForm((p) => ({ ...p, totalInvoice: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        placeholder="Nota"
+                        value={publicServiceForm.note}
+                        onChange={(e) => setPublicServiceForm((p) => ({ ...p, note: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm md:col-span-2"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handlePublicServiceFormSubmit}
+                        className="px-4 py-2 rounded-soft text-xs font-semibold bg-[#00502c] text-white hover:bg-[#006b3d] transition-colors"
+                      >
+                        {editingPublicServiceId ? 'Actualizar' : 'Registrar'}
+                      </button>
+                      {editingPublicServiceId && (
+                        <button
+                          onClick={resetPublicServiceForm}
+                          className="px-4 py-2 rounded-soft text-xs font-semibold border border-[#d6dce5] text-gray-600 hover:bg-gray-100 transition-colors"
+                        >
+                          Cancelar edición
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {publicServicesTab === 'detalle' && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-gray-500 border-b border-[#eaecf0]">
+                          <th className="px-2 py-2">Año</th>
+                          <th className="px-2 py-2">Mes</th>
+                          <th className="px-2 py-2">Sede</th>
+                          <th className="px-2 py-2 text-right">Energía kWh</th>
+                          <th className="px-2 py-2 text-right">Agua m³</th>
+                          <th className="px-2 py-2 text-right">Factura</th>
+                          {sgiCanEditDatasets && <th className="px-2 py-2">Acciones</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {publicServicesFilteredRecords.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-2 py-6 text-center text-gray-400">
+                              No hay registros con el filtro actual.
+                            </td>
+                          </tr>
+                        ) : (
+                          publicServicesFilteredRecords.map((row) => (
+                            <tr key={row.id} className="border-b border-[#f1f3f6] hover:bg-gray-50">
+                              <td className="px-2 py-2">{row.year}</td>
+                              <td className="px-2 py-2 capitalize">{PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]}</td>
+                              <td className="px-2 py-2">{row.sede}</td>
+                              <td className="px-2 py-2 text-right">{row.energyKwh.toLocaleString('es-CO')}</td>
+                              <td className="px-2 py-2 text-right">
+                                {(row.waterAcueducto + row.waterAlcantarillado).toLocaleString('es-CO')}
+                              </td>
+                              <td className="px-2 py-2 text-right">
+                                ${Math.round(row.totalInvoice).toLocaleString('es-CO')}
+                              </td>
+                              {sgiCanEditDatasets && (
+                                <td className="px-2 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => handleEditPublicServiceRecord(row)}
+                                      className="text-[#006b3d] hover:underline"
+                                    >
+                                      Editar
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeletePublicServiceRecord(row)}
+                                      className="text-[#93000a] hover:underline"
+                                    >
+                                      Borrar
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {publicServicesTab === 'sede' && (
+                  <div className="overflow-x-auto">
+                    {publicServicesBySedeStats.length === 0 ? (
+                      <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>
+                    ) : (
+                      <div className="flex items-end gap-3 min-w-max px-1 py-2">
+                        {renderSgiGroupedVerticalBars(
+                          publicServicesBySedeStats.map((row) => ({
+                            value: row.invoice,
+                            color: '#00502c',
+                            title: `${row.sede}: $${Math.round(row.invoice).toLocaleString('es-CO')}`,
+                            valueLabel: `$${Math.round(row.invoice / 1000)}k`
+                          })),
+                          Math.max(...publicServicesBySedeStats.map((row) => row.invoice), 1),
+                          { columnWidthClass: 'w-[64px]', barWidthClass: 'w-[36px]' }
+                        )}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px] text-gray-500">
+                      {publicServicesBySedeStats.map((row) => (
+                        <span key={row.sede}>{row.sede}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {publicServicesTab === 'tendencia' && (
+                  <div className="overflow-x-auto">
+                    {publicServicesMonthlyTrend.length === 0 ? (
+                      <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>
+                    ) : (
+                      <div className="flex items-end gap-3 min-w-max px-1 py-2">
+                        {renderSgiGroupedVerticalBars(
+                          publicServicesMonthlyTrend.map((row) => ({
+                            value: row.energyKwh,
+                            color: '#ffb300',
+                            title: `${PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]} ${row.year}: ${Math.round(row.energyKwh)} kWh`,
+                            valueLabel: `${Math.round(row.energyKwh)}`
+                          })),
+                          Math.max(...publicServicesMonthlyTrend.map((row) => row.energyKwh), 1),
+                          { columnWidthClass: 'w-[56px]', barWidthClass: 'w-[30px]' }
+                        )}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[11px] text-gray-500">
+                      {publicServicesMonthlyTrend.map((row) => (
+                        <span key={`${row.year}-${row.month}`}>
+                          {PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]?.slice(0, 3)} {row.year}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {publicServicesTab === 'metas' && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-gray-500 border-b border-[#eaecf0]">
+                          <th className="px-2 py-2">Año</th>
+                          <th className="px-2 py-2">Mes</th>
+                          <th className="px-2 py-2 text-right">Energía/empleado</th>
+                          <th className="px-2 py-2 text-right">Agua/empleado</th>
+                          <th className="px-2 py-2">Cumplimiento</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {publicServicesMonthlyTrend.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="px-2 py-6 text-center text-gray-400">
+                              No hay datos con el filtro actual.
+                            </td>
+                          </tr>
+                        ) : (
+                          publicServicesMonthlyTrend.map((row) => {
+                            const employees = getPublicServiceAdminEmployees(row.year, row.month);
+                            const energyPerEmployee = employees ? row.energyKwh / employees : null;
+                            const waterPerEmployee = employees ? row.waterM3 / employees : null;
+                            const energyOk =
+                              energyPerEmployee !== null && energyPerEmployee <= PUBLIC_SERVICES_TARGETS.energyPerEmployeeKwh;
+                            const waterOk =
+                              waterPerEmployee !== null && waterPerEmployee <= PUBLIC_SERVICES_TARGETS.waterPerEmployeeM3;
+                            return (
+                              <tr key={`${row.year}-${row.month}`} className="border-b border-[#f1f3f6]">
+                                <td className="px-2 py-2">{row.year}</td>
+                                <td className="px-2 py-2 capitalize">{PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]}</td>
+                                <td className="px-2 py-2 text-right">
+                                  {energyPerEmployee === null ? '—' : `${energyPerEmployee.toFixed(1)} kWh`}
+                                </td>
+                                <td className="px-2 py-2 text-right">
+                                  {waterPerEmployee === null ? '—' : `${waterPerEmployee.toFixed(1)} m³`}
+                                </td>
+                                <td className="px-2 py-2">
+                                  {employees === null ? (
+                                    <span className="text-gray-400">Sin dato de empleados</span>
+                                  ) : (
+                                    <span
+                                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                        energyOk && waterOk
+                                          ? 'bg-emerald-50 text-[#00502c] border border-emerald-200'
+                                          : 'bg-red-50 text-[#93000a] border border-red-200'
+                                      }`}
+                                    >
+                                      {energyOk && waterOk ? 'Cumple' : 'No cumple'}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="bg-white border border-[#eaecf0] rounded-soft p-4 shadow-sm space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
