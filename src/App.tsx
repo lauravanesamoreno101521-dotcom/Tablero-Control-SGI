@@ -3454,6 +3454,15 @@ export default function App() {
         { id: '3', label: 'Consolidado y seguimiento' }
       ] as const;
     }
+    if (
+      selectedServiceMenuItem === 'Consumo servicios públicos' ||
+      selectedServiceMenuItem === 'CO2 por kilometraje' ||
+      selectedServiceMenuItem === 'Residuos de mantenimiento'
+    ) {
+      // Los módulos de Ambiental tienen su propio bloque autocontenido (tabs, KPIs, tabla)
+      // más arriba, así que no necesitan este selector genérico de sub-indicador 1/2/3/4.
+      return [] as const;
+    }
     return [
       { id: '1', label: '1' },
       { id: '2', label: '2' },
@@ -7126,24 +7135,37 @@ export default function App() {
                     {publicServicesBySedeStats.length === 0 ? (
                       <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>
                     ) : (
-                      <div className="flex items-end gap-3 min-w-max px-1 py-2">
-                        {renderSgiGroupedVerticalBars(
-                          publicServicesBySedeStats.map((row) => ({
-                            value: row.invoice,
-                            color: '#00502c',
-                            title: `${row.sede}: $${Math.round(row.invoice).toLocaleString('es-CO')}`,
-                            valueLabel: `$${Math.round(row.invoice / 1000)}k`
-                          })),
-                          Math.max(...publicServicesBySedeStats.map((row) => row.invoice), 1),
-                          { columnWidthClass: 'w-[64px]', barWidthClass: 'w-[36px]' }
-                        )}
+                      <div className="flex items-end gap-2 min-w-max px-1 py-2">
+                        {(() => {
+                          const maxInvoice = Math.max(...publicServicesBySedeStats.map((row) => row.invoice), 1);
+                          return publicServicesBySedeStats.map((row) => {
+                            const barHeight = getScaledBarHeight(row.invoice, maxInvoice);
+                            const shortLabel = row.sede.replace(/^[^-]*-\s*/, '') || row.sede;
+                            return (
+                              <div key={row.sede} className="w-[76px] flex flex-col items-center shrink-0">
+                                <span className="text-[10px] font-mono font-semibold text-[#00502c] mb-1 whitespace-nowrap">
+                                  ${Math.round(row.invoice / 1000)}k
+                                </span>
+                                <div className="h-40 w-full flex items-end justify-center">
+                                  <div
+                                    className="w-[34px] rounded-t-sm shrink-0"
+                                    style={{
+                                      height: `${barHeight}%`,
+                                      minHeight: barHeight <= 0 ? '2px' : '6px',
+                                      backgroundColor: '#00502c'
+                                    }}
+                                    title={`${row.sede}: $${Math.round(row.invoice).toLocaleString('es-CO')}`}
+                                  />
+                                </div>
+                                <span className="text-[10px] text-gray-500 text-center mt-1.5 leading-tight break-words">
+                                  {shortLabel}
+                                </span>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
                     )}
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px] text-gray-500">
-                      {publicServicesBySedeStats.map((row) => (
-                        <span key={row.sede}>{row.sede}</span>
-                      ))}
-                    </div>
                   </div>
                 )}
 
@@ -7152,26 +7174,36 @@ export default function App() {
                     {publicServicesMonthlyTrend.length === 0 ? (
                       <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>
                     ) : (
-                      <div className="flex items-end gap-3 min-w-max px-1 py-2">
-                        {renderSgiGroupedVerticalBars(
-                          publicServicesMonthlyTrend.map((row) => ({
-                            value: row.energyKwh,
-                            color: '#ffb300',
-                            title: `${PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]} ${row.year}: ${Math.round(row.energyKwh)} kWh`,
-                            valueLabel: `${Math.round(row.energyKwh)}`
-                          })),
-                          Math.max(...publicServicesMonthlyTrend.map((row) => row.energyKwh), 1),
-                          { columnWidthClass: 'w-[56px]', barWidthClass: 'w-[30px]' }
-                        )}
+                      <div className="flex items-end gap-2 min-w-max px-1 py-2">
+                        {(() => {
+                          const maxEnergy = Math.max(...publicServicesMonthlyTrend.map((row) => row.energyKwh), 1);
+                          return publicServicesMonthlyTrend.map((row) => {
+                            const barHeight = getScaledBarHeight(row.energyKwh, maxEnergy);
+                            return (
+                              <div key={`${row.year}-${row.month}`} className="w-[62px] flex flex-col items-center shrink-0">
+                                <span className="text-[10px] font-mono font-semibold text-[#a15c00] mb-1 whitespace-nowrap">
+                                  {Math.round(row.energyKwh)}
+                                </span>
+                                <div className="h-40 w-full flex items-end justify-center">
+                                  <div
+                                    className="w-[30px] rounded-t-sm shrink-0"
+                                    style={{
+                                      height: `${barHeight}%`,
+                                      minHeight: barHeight <= 0 ? '2px' : '6px',
+                                      backgroundColor: '#ffb300'
+                                    }}
+                                    title={`${PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]} ${row.year}: ${Math.round(row.energyKwh)} kWh`}
+                                  />
+                                </div>
+                                <span className="text-[10px] text-gray-500 text-center mt-1.5 leading-tight whitespace-nowrap">
+                                  {PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]?.slice(0, 3)} {row.year}
+                                </span>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
                     )}
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[11px] text-gray-500">
-                      {publicServicesMonthlyTrend.map((row) => (
-                        <span key={`${row.year}-${row.month}`}>
-                          {PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]?.slice(0, 3)} {row.year}
-                        </span>
-                      ))}
-                    </div>
                   </div>
                 )}
 
@@ -7239,6 +7271,9 @@ export default function App() {
               </div>
             )}
 
+            {selectedServiceMenuItem !== 'Consumo servicios públicos' &&
+              selectedServiceMenuItem !== 'CO2 por kilometraje' &&
+              selectedServiceMenuItem !== 'Residuos de mantenimiento' && (
             <div className="bg-white border border-[#eaecf0] rounded-soft p-4 shadow-sm space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -10447,6 +10482,7 @@ export default function App() {
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
 
