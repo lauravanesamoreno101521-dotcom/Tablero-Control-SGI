@@ -7217,40 +7217,84 @@ export default function App() {
                 )}
 
                 {publicServicesTab === 'tendencia' && (
-                  <div className="overflow-x-auto">
-                    {publicServicesMonthlyTrend.length === 0 ? (
-                      <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>
-                    ) : (
-                      <div className="flex items-end gap-2 min-w-max px-1 py-2">
-                        {(() => {
-                          const maxEnergy = Math.max(...publicServicesMonthlyTrend.map((row) => row.energyKwh), 1);
-                          return publicServicesMonthlyTrend.map((row) => {
-                            const barHeight = getScaledBarHeight(row.energyKwh, maxEnergy);
-                            return (
-                              <div key={`${row.year}-${row.month}`} className="w-[62px] flex flex-col items-center shrink-0">
-                                <span className="text-[10px] font-mono font-semibold text-[#a15c00] mb-1 whitespace-nowrap">
-                                  {Math.round(row.energyKwh)}
-                                </span>
-                                <div className="h-40 w-full flex items-end justify-center">
-                                  <div
-                                    className="w-[30px] rounded-t-sm shrink-0"
-                                    style={{
-                                      height: `${barHeight}%`,
-                                      minHeight: barHeight <= 0 ? '2px' : '6px',
-                                      backgroundColor: '#ffb300'
-                                    }}
-                                    title={`${PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]} ${row.year}: ${Math.round(row.energyKwh)} kWh`}
-                                  />
+                  <div className="space-y-6">
+                    <div className="overflow-x-auto">
+                      <p className="text-xs font-bold text-[#a15c00] uppercase tracking-wide mb-2">
+                        Tendencia de energía (kWh)
+                      </p>
+                      {publicServicesMonthlyTrend.length === 0 ? (
+                        <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>
+                      ) : (
+                        <div className="flex items-end gap-2 min-w-max px-1 py-2">
+                          {(() => {
+                            const maxEnergy = Math.max(...publicServicesMonthlyTrend.map((row) => row.energyKwh), 1);
+                            return publicServicesMonthlyTrend.map((row) => {
+                              const barHeight = getScaledBarHeight(row.energyKwh, maxEnergy);
+                              return (
+                                <div key={`energy-${row.year}-${row.month}`} className="w-[62px] flex flex-col items-center shrink-0">
+                                  <span className="text-[10px] font-mono font-semibold text-[#a15c00] mb-1 whitespace-nowrap">
+                                    {Math.round(row.energyKwh)}
+                                  </span>
+                                  <div className="h-40 w-full flex items-end justify-center">
+                                    <div
+                                      className="w-[30px] rounded-t-sm shrink-0"
+                                      style={{
+                                        height: `${barHeight}%`,
+                                        minHeight: barHeight <= 0 ? '2px' : '6px',
+                                        backgroundColor: '#ffb300'
+                                      }}
+                                      title={`${PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]} ${row.year}: ${Math.round(row.energyKwh)} kWh`}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-gray-500 text-center mt-1.5 leading-tight whitespace-nowrap">
+                                    {PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]?.slice(0, 3)} {row.year}
+                                  </span>
                                 </div>
-                                <span className="text-[10px] text-gray-500 text-center mt-1.5 leading-tight whitespace-nowrap">
-                                  {PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]?.slice(0, 3)} {row.year}
-                                </span>
-                              </div>
-                            );
-                          });
-                        })()}
-                      </div>
-                    )}
+                              );
+                            });
+                          })()}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="overflow-x-auto border-t border-[#eaecf0] pt-4">
+                      <p className="text-xs font-bold text-[#1e3a8a] uppercase tracking-wide mb-2">
+                        Tendencia de agua (m³)
+                      </p>
+                      {publicServicesMonthlyTrend.length === 0 ? (
+                        <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>
+                      ) : (
+                        <div className="flex items-end gap-2 min-w-max px-1 py-2">
+                          {(() => {
+                            const maxWater = Math.max(...publicServicesMonthlyTrend.map((row) => row.waterM3), 1);
+                            return publicServicesMonthlyTrend.map((row) => {
+                              const barHeight = getScaledBarHeight(row.waterM3, maxWater);
+                              return (
+                                <div key={`water-${row.year}-${row.month}`} className="w-[62px] flex flex-col items-center shrink-0">
+                                  <span className="text-[10px] font-mono font-semibold text-[#1e3a8a] mb-1 whitespace-nowrap">
+                                    {Math.round(row.waterM3)}
+                                  </span>
+                                  <div className="h-40 w-full flex items-end justify-center">
+                                    <div
+                                      className="w-[30px] rounded-t-sm shrink-0"
+                                      style={{
+                                        height: `${barHeight}%`,
+                                        minHeight: barHeight <= 0 ? '2px' : '6px',
+                                        backgroundColor: '#4169e1'
+                                      }}
+                                      title={`${PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]} ${row.year}: ${Math.round(row.waterM3)} m³`}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-gray-500 text-center mt-1.5 leading-tight whitespace-nowrap">
+                                    {PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]?.slice(0, 3)} {row.year}
+                                  </span>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
