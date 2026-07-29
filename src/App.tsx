@@ -7219,11 +7219,17 @@ export default function App() {
                         ))}
                       </select>
                       <input
+                        list="ps-sede-options"
                         placeholder="Agencia / sede"
                         value={publicServiceForm.sede}
                         onChange={(e) => setPublicServiceForm((p) => ({ ...p, sede: e.target.value }))}
                         className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm md:col-span-2"
                       />
+                      <datalist id="ps-sede-options">
+                        {publicServicesSedeOptions.map((sede) => (
+                          <option key={`ps-sede-option-${sede}`} value={sede} />
+                        ))}
+                      </datalist>
                       <input
                         type="number"
                         placeholder="Kw Energía"
