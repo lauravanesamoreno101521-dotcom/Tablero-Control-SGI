@@ -978,6 +978,12 @@ export default function App() {
     }
   ];
 
+  const sgiCategoryIcon: Record<'calidad' | 'sst' | 'ambiental', typeof CheckCircle> = {
+    calidad: CheckCircle,
+    sst: ShieldCheck,
+    ambiental: Leaf
+  };
+
   const AMBIENTAL_PLACEHOLDER_ITEMS: readonly string[] = [
     'Consumo servicios públicos',
     'CO2 por kilometraje',
@@ -1012,7 +1018,7 @@ export default function App() {
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>('TRK-7711-ESP'); // pre-select critical item for visual impact
   const [selectedMapNode, setSelectedMapNode] = useState<string | null>(null);
   const [selectedServiceMenuItem, setSelectedServiceMenuItem] = useState<(typeof serviceMenuItems)[number]>('Formación');
-  const [isGsiMenuOpen, setIsGsiMenuOpen] = useState(true);
+  const [isGsiMenuOpen, setIsGsiMenuOpen] = useState(false);
   const [openSgiCategory, setOpenSgiCategory] = useState<'calidad' | 'sst' | 'ambiental' | null>('calidad');
   const [sgiSubIndicator, setSgiSubIndicator] = useState<'1' | '2' | '3' | '4'>('1');
   const [sgiDonutMetric, setSgiDonutMetric] = useState<'executed' | 'logistic' | 'sgi'>('executed');
@@ -5113,61 +5119,87 @@ export default function App() {
         />
       ) : (
       <>
+      {isGsiMenuOpen && (
+        <div
+          className="fixed inset-0 bg-[#0b1f14]/40 backdrop-blur-[1px] z-30 transition-opacity duration-300"
+          onClick={() => setIsGsiMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       <div
         className={`fixed left-0 top-[68px] z-40 transition-transform duration-300 ${
           isGsiMenuOpen ? 'translate-x-0' : '-translate-x-[calc(100%-96px)]'
         }`}
       >
         <div className="flex items-start">
-          <aside className="w-72 bg-white border-y border-r border-[#eaecf0] shadow-md p-3 rounded-r-soft max-h-[calc(100vh-100px)] overflow-y-auto">
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <h3 className="text-sm font-bold text-[#00502c] uppercase tracking-wide">Gestión SGI</h3>
-              <span className="text-[10px] font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                {serviceMenuItems.length} ítems
-              </span>
+          <aside className="w-80 bg-white border-y border-r border-[#eaecf0] shadow-2xl rounded-r-2xl max-h-[calc(100vh-100px)] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-[#eaecf0] px-4 py-3.5 flex items-center gap-3 rounded-tr-2xl">
+              <div className="w-9 h-9 rounded-xl bg-emerald-50 text-[#00502c] flex items-center justify-center shrink-0">
+                <Layers size={18} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-bold text-[#00502c] tracking-tight">Gestión SGI</h3>
+                <p className="text-[11px] text-gray-500">{serviceMenuItems.length} módulos disponibles</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsGsiMenuOpen(false)}
+                className="w-7 h-7 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 flex items-center justify-center transition-colors shrink-0"
+                aria-label="Cerrar menú"
+              >
+                <span className="text-sm font-bold leading-none" aria-hidden="true">×</span>
+              </button>
             </div>
 
-            <div className="space-y-2">
+            <div className="p-3 space-y-2.5">
               {sgiMenuCategories.map((category) => {
                 const isOpen = openSgiCategory === category.key;
                 const hasSelected = category.items.some((it) => it.value === selectedServiceMenuItem);
+                const CategoryIcon = sgiCategoryIcon[category.key];
                 return (
-                  <div key={category.key} className="border border-[#eaecf0] rounded-soft overflow-hidden">
+                  <div
+                    key={category.key}
+                    className={`border rounded-xl overflow-hidden transition-colors ${
+                      hasSelected ? 'border-emerald-200' : 'border-[#eaecf0]'
+                    }`}
+                  >
                     <button
                       type="button"
                       onClick={() => setOpenSgiCategory((prev) => (prev === category.key ? null : category.key))}
-                      className={`w-full text-left px-3 py-2.5 text-sm font-bold uppercase tracking-wide flex items-center justify-between gap-2 transition-colors ${
+                      className={`w-full text-left px-3.5 py-3 text-[13px] font-bold uppercase tracking-wide flex items-center justify-between gap-2 transition-colors ${
                         hasSelected ? 'bg-emerald-50 text-[#00502c]' : 'bg-[#f8f9fa] text-gray-700 hover:bg-gray-100'
                       }`}
                     >
-                      <span>{category.label}</span>
+                      <span className="flex items-center gap-2.5">
+                        <CategoryIcon size={16} className={hasSelected ? 'text-[#006b3d]' : 'text-gray-400'} />
+                        <span>{category.label}</span>
+                      </span>
                       <ChevronDown
                         size={16}
-                        className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                        className={`transition-transform text-gray-400 ${isOpen ? 'rotate-180' : ''}`}
                         aria-hidden="true"
                       />
                     </button>
                     {isOpen && (
-                      <div className="border-t border-[#eaecf0]">
-                        {category.items.map((it) => (
-                          <button
-                            key={it.value}
-                            onClick={() => handleServiceMenuItemClick(it.value)}
-                            className={`w-full text-left pl-6 pr-3 py-2 text-sm border-b border-[#f1f3f6] last:border-b-0 transition-colors flex items-center justify-between gap-2 ${
-                              selectedServiceMenuItem === it.value
-                                ? 'bg-emerald-50 text-[#00502c] font-semibold'
-                                : 'text-gray-700 hover:bg-gray-50'
-                            }`}
-                          >
-                            <span className="flex items-center gap-2">
-                              <FileText size={14} />
+                      <div className="bg-white divide-y divide-[#f1f3f6]">
+                        {category.items.map((it) => {
+                          const isSelected = selectedServiceMenuItem === it.value;
+                          return (
+                            <button
+                              key={it.value}
+                              onClick={() => handleServiceMenuItemClick(it.value)}
+                              className={`w-full text-left pl-5 pr-3.5 py-2.5 text-[13px] transition-colors flex items-center justify-between gap-2 border-l-2 ${
+                                isSelected
+                                  ? 'bg-emerald-50/70 text-[#00502c] font-semibold border-l-[#00502c]'
+                                  : 'text-gray-600 hover:bg-gray-50 border-l-transparent'
+                              }`}
+                            >
                               <span>{it.label}</span>
-                            </span>
-                            <span className="bg-[#00502c] text-white font-mono text-[9px] px-1.5 py-0.5 rounded-soft font-bold">
-                              SGI
-                            </span>
-                          </button>
-                        ))}
+                              {isSelected && <ArrowRight size={13} className="text-[#006b3d] shrink-0" />}
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -5178,13 +5210,13 @@ export default function App() {
 
           <button
             onClick={() => setIsGsiMenuOpen(prev => !prev)}
-            className="h-14 w-24 px-2 bg-[#00502c] text-white rounded-r-soft border-y border-r border-[#ffd000] shadow-md flex items-center justify-center gap-1.5 hover:bg-[#006b3d] transition-colors whitespace-nowrap"
+            className="h-14 w-24 px-2 bg-[#00502c] text-white rounded-r-2xl border-y border-r border-[#ffd000] shadow-md flex items-center justify-center gap-1.5 hover:bg-[#006b3d] transition-colors whitespace-nowrap"
             aria-label={isGsiMenuOpen ? 'Ocultar menú Gestión SGI' : 'Mostrar menú Gestión SGI'}
             title={isGsiMenuOpen ? 'Ocultar Gestión SGI' : 'Mostrar Gestión SGI'}
           >
             <span className="text-[11px] font-semibold uppercase tracking-wide">Menú</span>
             {isGsiMenuOpen ? (
-              <span className="text-base font-bold leading-none" aria-hidden="true">X</span>
+              <span className="text-base font-bold leading-none" aria-hidden="true">×</span>
             ) : (
               <Check size={16} aria-hidden="true" />
             )}
