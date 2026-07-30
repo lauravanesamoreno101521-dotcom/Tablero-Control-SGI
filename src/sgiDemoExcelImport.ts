@@ -7,6 +7,8 @@ import {
 import { normalizeFormacionModality, normalizeFormacionClient } from './formacionInformeDemo.ts';
 import { normalizeMedicinaCity, normalizeMedicinaExamStatus } from './medicinaTrabajoDemo.ts';
 import { normalizePublicServiceSede } from './publicServicesDemo.ts';
+import { normalizeCo2Fuel, normalizeCo2Placa } from './co2KilometrajeDemo.ts';
+import { normalizeResiduoUnidad } from './residuosMantenimientoDemo.ts';
 
 export type SgiDemoExcelService =
   | 'Acompañamiento presencial'
@@ -14,7 +16,9 @@ export type SgiDemoExcelService =
   | 'Incapacidades'
   | 'Formación'
   | 'Medicina del trabajo'
-  | 'Consumo servicios públicos';
+  | 'Consumo servicios públicos'
+  | 'CO2 por kilometraje'
+  | 'Residuos de mantenimiento';
 
 const normalizeText = (value: unknown) =>
   String(value ?? '')
@@ -280,6 +284,10 @@ export async function importDemoExcelForService(
       return importMedicinaRecords(workbook, XLSX);
     case 'Consumo servicios públicos':
       return importPublicServiceRecords(workbook, XLSX);
+    case 'CO2 por kilometraje':
+      return importCo2KilometrajeRecords(workbook, XLSX);
+    case 'Residuos de mantenimiento':
+      return importResiduosMantenimientoRecords(workbook, XLSX);
     default:
       throw new Error('Servicio no soportado para carga de Excel.');
   }
@@ -629,6 +637,137 @@ async function importPublicServiceRecords(workbook: import('xlsx').WorkBook, XLS
   if (records.length === 0) {
     throw new Error(
       'El Excel no contiene registros válidos de consumo de servicios públicos. Verifica que tenga columnas Mes, Agencia / sede, Kw Energía, M°3 ACUEDUCT, M°3 ALCANTARIL y TOTAL FACTURA.'
+    );
+  }
+
+  return { count: records.length, records };
+}
+
+// El Excel de CO2 por kilometraje (hojas "Consolidado_2024/2025/2026") trae un renglón por
+// cada evento de tanqueo/servicio, con la fecha real del servicio (no siempre coincide con el
+// año de la hoja). Igual que en la base ya cargada, se agrega a nivel placa + año + mes +
+// combustible para conservar la precisión del cálculo de CO2 (que depende del factor de
+// emisión por tipo de combustible) sin duplicar filas por cada tanqueo individual.
+async function importCo2KilometrajeRecords(workbook: import('xlsx').WorkBook, XLSX: typeof import('xlsx')) {
+  const sheetNames = workbook.SheetNames.filter((name) => /consolidado/i.test(name));
+  const targetSheets = sheetNames.length > 0 ? sheetNames : [workbook.SheetNames[0]];
+
+  const byKey = new Map<
+    string,
+    {
+      placa: string;
+      year: number;
+      month: number;
+      combustible: string;
+      claseVehiculo: string;
+      ciudad: string;
+      kilometraje: number;
+      galones: number;
+      litros: number;
+    }
+  >();
+
+  targetSheets.forEach((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) return;
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+    const yearFromSheetName = Number((sheetName.match(/20\d{2}/) || [])[0]) || null;
+
+    rows.forEach((row) => {
+      const placaRaw = pickField(row, ['placa']);
+      if (!placaRaw.trim()) return;
+      const placa = normalizeCo2Placa(placaRaw);
+
+      const rawDate = row['FECHA SERVICIOS'] ?? row['Fecha servicios'] ?? pickField(row, ['fecha servicios', 'fecha']);
+      const parsedDate = parseUnknownDate(rawDate) ?? parseSpanishDate(pickField(row, ['fecha servicios', 'fecha']));
+      const year = parsedDate ? parsedDate.getFullYear() : yearFromSheetName;
+      const month = parsedDate ? parsedDate.getMonth() + 1 : null;
+      if (!year || !month) return;
+
+      const combustible = normalizeCo2Fuel(pickField(row, ['combustible']));
+      const claseVehiculo = pickField(row, ['clase vehiculo', 'clase de vehiculo']) || 'SIN CLASE';
+      const ciudad = pickField(row, ['ciudad']) || 'SIN DATO';
+      const kilometraje = toNumberOrZero(pickField(row, ['kilometraje recorrido', 'kilometraje']));
+      const galones = toNumberOrZero(pickField(row, ['consumio de combustible en galones', 'galones']));
+      const litros = toNumberOrZero(pickField(row, ['consumio de combustible en litros', 'litros']));
+
+      const key = [placa, year, month, combustible].join('|');
+      const entry = byKey.get(key) ?? {
+        placa,
+        year,
+        month,
+        combustible,
+        claseVehiculo,
+        ciudad,
+        kilometraje: 0,
+        galones: 0,
+        litros: 0
+      };
+      entry.kilometraje += kilometraje;
+      entry.galones += galones;
+      entry.litros += litros;
+      byKey.set(key, entry);
+    });
+  });
+
+  const records = Array.from(byKey.values()).map((entry, index) => ({
+    id: `co2-${Date.now()}-${index}`,
+    ...entry
+  }));
+
+  if (records.length === 0) {
+    throw new Error(
+      'El Excel no contiene registros válidos de CO2 por kilometraje. Verifica que tenga columnas Placa, Fecha servicios, Combustible, Kilometraje recorrido y Consumo de combustible en litros.'
+    );
+  }
+
+  return { count: records.length, records };
+}
+
+// El Excel de Residuos de mantenimiento (hoja "REPORTE 20XX") trae un renglón por cada entrega
+// de residuo al gestor, con la fecha real de entrega. Se respeta ese grano de detalle (no se
+// agrega por mes) porque cada fila representa un evento distinto de generación/entrega.
+async function importResiduosMantenimientoRecords(workbook: import('xlsx').WorkBook, XLSX: typeof import('xlsx')) {
+  const sheetNames = workbook.SheetNames.filter((name) => /reporte/i.test(name));
+  const targetSheets = sheetNames.length > 0 ? sheetNames : [workbook.SheetNames[0]];
+
+  const records: unknown[] = [];
+
+  targetSheets.forEach((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) return;
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+    const yearFromSheetName = Number((sheetName.match(/20\d{2}/) || [])[0]) || null;
+
+    rows.forEach((row) => {
+      const rawDate = pickRawField(row, ['fecha entrega residuo', 'fecha']);
+      const parsedDate = parseUnknownDate(rawDate) ?? parseSpanishDate(pickField(row, ['fecha']));
+      const year = parsedDate ? parsedDate.getFullYear() : yearFromSheetName;
+      const month = parsedDate ? parsedDate.getMonth() + 1 : null;
+      const residuo = pickField(row, ['residuo']);
+      const cantidad = toNumberOrZero(pickField(row, ['generacion de residuos', 'generación de residuos', 'cantidad']));
+      if (!year || !month || !residuo || !cantidad) return;
+
+      records.push({
+        id: `res-${Date.now()}-${records.length}`,
+        year,
+        month,
+        gestor: pickField(row, ['gestor del residuo', 'gestor']),
+        empresa: pickField(row, ['empresa']),
+        residuo,
+        corriente: pickField(row, ['descripcion de la corriente', 'descripción de la corriente', 'corriente']),
+        descripcion: pickField(row, ['descripcion del residuo', 'descripción del residuo']),
+        estadoMateria: pickField(row, ['estado de la materia', 'estado materia']),
+        unidad: normalizeResiduoUnidad(pickField(row, ['unidad de medida', 'unidad'])),
+        manejo: pickField(row, ['manejo de residuos', 'manejo']),
+        cantidad
+      });
+    });
+  });
+
+  if (records.length === 0) {
+    throw new Error(
+      'El Excel no contiene registros válidos de residuos de mantenimiento. Verifica que tenga columnas Fecha entrega residuo, Gestor, Empresa, Residuo, Unidad de medida y Generación de residuos.'
     );
   }
 

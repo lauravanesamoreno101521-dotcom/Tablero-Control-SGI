@@ -36,7 +36,9 @@ import {
   Zap,
   Leaf,
   Users,
-  ChevronDown
+  ChevronDown,
+  Route,
+  Cloud
 } from 'lucide-react';
 import { Shipment, Driver, FleetVehicle, IncidentAlert, GpsPoint, OptimizedRoute, ShipmentStatus } from './types.ts';
 import { INITIAL_SHIPMENTS, INITIAL_DRIVERS, INITIAL_VEHICLES, INITIAL_ALERTS, COORDINATES_MAP } from './mockData.ts';
@@ -162,6 +164,24 @@ import {
   type PublicServiceRecord,
   type PublicServiceIndicatorRecord
 } from './publicServicesDemo.ts';
+import {
+  INITIAL_CO2_KILOMETRAJE_RECORDS,
+  CO2_MONTH_NAMES,
+  CO2_FUEL_OPTIONS,
+  computeCo2Kg,
+  computeCo2TreesToOffset,
+  normalizeCo2Fuel,
+  normalizeCo2Placa,
+  type Co2KilometrajeRecord
+} from './co2KilometrajeDemo.ts';
+import {
+  INITIAL_RESIDUOS_MANTENIMIENTO_RECORDS,
+  RESIDUOS_MONTH_NAMES,
+  RESIDUOS_UNIDAD_OPTIONS,
+  isResiduoAprovechado,
+  normalizeResiduoUnidad,
+  type ResiduoRecord
+} from './residuosMantenimientoDemo.ts';
 
 type IncapInformeByYear = Record<string, unknown[][]>;
 
@@ -994,10 +1014,7 @@ export default function App() {
     ambiental: Leaf
   };
 
-  const AMBIENTAL_PLACEHOLDER_ITEMS: readonly string[] = [
-    'CO2 por kilometraje',
-    'Residuos de mantenimiento'
-  ];
+  const AMBIENTAL_PLACEHOLDER_ITEMS: readonly string[] = [];
 
   // State for operational database
   const [shipments, setShipments] = useState<Shipment[]>(() => {
@@ -1093,6 +1110,50 @@ export default function App() {
     energyValue: '',
     adminEmployees: '',
     totalEmployees: ''
+  });
+  const [co2Tab, setCo2Tab] = useState<'detalle' | 'vehiculo' | 'tendencia'>('detalle');
+  const [co2YearFilter, setCo2YearFilter] = useState('');
+  const [co2MonthFilter, setCo2MonthFilter] = useState('');
+  const [showCo2MonthRange, setShowCo2MonthRange] = useState(false);
+  const [co2MonthFromFilter, setCo2MonthFromFilter] = useState('');
+  const [co2MonthToFilter, setCo2MonthToFilter] = useState('');
+  const [co2PlacaFilter, setCo2PlacaFilter] = useState('');
+  const [co2FuelFilter, setCo2FuelFilter] = useState('');
+  const [showCo2Entry, setShowCo2Entry] = useState(false);
+  const [editingCo2Id, setEditingCo2Id] = useState<string | null>(null);
+  const [co2Form, setCo2Form] = useState({
+    year: String(new Date().getFullYear()),
+    month: '',
+    placa: '',
+    claseVehiculo: '',
+    ciudad: '',
+    combustible: '',
+    kilometraje: '',
+    galones: '',
+    litros: ''
+  });
+  const [residuosTab, setResiduosTab] = useState<'detalle' | 'tipo' | 'manejo'>('detalle');
+  const [residuosYearFilter, setResiduosYearFilter] = useState('');
+  const [residuosMonthFilter, setResiduosMonthFilter] = useState('');
+  const [showResiduosMonthRange, setShowResiduosMonthRange] = useState(false);
+  const [residuosMonthFromFilter, setResiduosMonthFromFilter] = useState('');
+  const [residuosMonthToFilter, setResiduosMonthToFilter] = useState('');
+  const [residuosTipoFilter, setResiduosTipoFilter] = useState('');
+  const [residuosGestorFilter, setResiduosGestorFilter] = useState('');
+  const [showResiduosEntry, setShowResiduosEntry] = useState(false);
+  const [editingResiduoId, setEditingResiduoId] = useState<string | null>(null);
+  const [residuoForm, setResiduoForm] = useState({
+    year: String(new Date().getFullYear()),
+    month: '',
+    gestor: '',
+    empresa: '',
+    residuo: '',
+    corriente: '',
+    descripcion: '',
+    estadoMateria: '',
+    unidad: 'KILOS',
+    manejo: '',
+    cantidad: ''
   });
   const sgiDonutRef = useRef<HTMLDivElement | null>(null);
   const supabaseSyncReadyRef = useRef(false);
@@ -1572,6 +1633,14 @@ export default function App() {
     () => INITIAL_PUBLIC_SERVICE_INDICATOR_RECORDS
   );
 
+  const [co2KilometrajeRecords, setCo2KilometrajeRecords] = useState<Co2KilometrajeRecord[]>(
+    () => INITIAL_CO2_KILOMETRAJE_RECORDS
+  );
+
+  const [residuosMantenimientoRecords, setResiduosMantenimientoRecords] = useState<ResiduoRecord[]>(
+    () => INITIAL_RESIDUOS_MANTENIMIENTO_RECORDS
+  );
+
   const buildSgiDatasetBaselines = (): SgiPersistedDatasets => ({
     acompanamiento: initialSstVisits,
     comportamientos: initialUnsafeBehaviorRecords,
@@ -1581,6 +1650,8 @@ export default function App() {
     medicinaTrabajo: initialMedicinaTrabajoRecords,
     publicServices: INITIAL_PUBLIC_SERVICE_RECORDS,
     publicServiceIndicators: INITIAL_PUBLIC_SERVICE_INDICATOR_RECORDS,
+    co2Kilometraje: INITIAL_CO2_KILOMETRAJE_RECORDS,
+    residuosMantenimiento: INITIAL_RESIDUOS_MANTENIMIENTO_RECORDS,
     incapInformeEdits: {},
     formacionInformeEdits: {}
   });
@@ -1605,6 +1676,19 @@ export default function App() {
       }))
     );
     setPublicServiceIndicatorRecords(datasets.publicServiceIndicators as PublicServiceIndicatorRecord[]);
+    setCo2KilometrajeRecords(
+      (datasets.co2Kilometraje as Co2KilometrajeRecord[]).map((row) => ({
+        ...row,
+        placa: normalizeCo2Placa(row.placa),
+        combustible: normalizeCo2Fuel(row.combustible)
+      }))
+    );
+    setResiduosMantenimientoRecords(
+      (datasets.residuosMantenimiento as ResiduoRecord[]).map((row) => ({
+        ...row,
+        unidad: normalizeResiduoUnidad(row.unidad)
+      }))
+    );
     setIncapDemoInformeEdits(
       datasets.incapInformeEdits as Record<number, Partial<IncapInformeMonthlyInputs & IncapInformeManualBdEdits>>
     );
@@ -1714,6 +1798,8 @@ export default function App() {
           medicinaTrabajo: medicinaTrabajoRecords,
           publicServices: publicServiceRecords,
           publicServiceIndicators: publicServiceIndicatorRecords,
+          co2Kilometraje: co2KilometrajeRecords,
+          residuosMantenimiento: residuosMantenimientoRecords,
           incapInformeEdits: incapDemoInformeEdits,
           formacionInformeEdits: formacionDemoInformeEdits
         },
@@ -1731,6 +1817,8 @@ export default function App() {
     medicinaTrabajoRecords,
     publicServiceRecords,
     publicServiceIndicatorRecords,
+    co2KilometrajeRecords,
+    residuosMantenimientoRecords,
     incapDemoInformeEdits,
     formacionDemoInformeEdits,
     isDbTestConnected,
@@ -2669,6 +2757,221 @@ export default function App() {
     });
     return Array.from(map.values()).sort((a, b) => (a.year - b.year) || (a.month - b.month));
   }, [publicServicesFilteredRecords]);
+
+  const co2YearOptions = useMemo(
+    () =>
+      Array.from(new Set(co2KilometrajeRecords.map((row) => row.year)))
+        .sort((a, b) => b - a)
+        .map(String),
+    [co2KilometrajeRecords]
+  );
+
+  const co2PlacaOptions = useMemo(
+    () => Array.from(new Set(co2KilometrajeRecords.map((row) => row.placa))).sort(),
+    [co2KilometrajeRecords]
+  );
+
+  const co2FilteredRecords = useMemo(() => {
+    const fromMonth = co2MonthFromFilter ? Number(co2MonthFromFilter) : null;
+    const toMonth = co2MonthToFilter ? Number(co2MonthToFilter) : null;
+    return co2KilometrajeRecords.filter((row) => {
+      if (co2YearFilter && String(row.year) !== co2YearFilter) return false;
+      if (fromMonth || toMonth) {
+        if (fromMonth && row.month < fromMonth) return false;
+        if (toMonth && row.month > toMonth) return false;
+      } else if (co2MonthFilter && String(row.month) !== co2MonthFilter) {
+        return false;
+      }
+      if (co2PlacaFilter && row.placa !== co2PlacaFilter) return false;
+      if (co2FuelFilter && row.combustible !== co2FuelFilter) return false;
+      return true;
+    });
+  }, [
+    co2KilometrajeRecords,
+    co2YearFilter,
+    co2MonthFilter,
+    co2MonthFromFilter,
+    co2MonthToFilter,
+    co2PlacaFilter,
+    co2FuelFilter
+  ]);
+
+  const co2Kpis = useMemo(() => {
+    const totalKm = co2FilteredRecords.reduce((sum, row) => sum + row.kilometraje, 0);
+    const totalLitros = co2FilteredRecords.reduce((sum, row) => sum + row.litros, 0);
+    const totalCo2 = co2FilteredRecords.reduce((sum, row) => sum + computeCo2Kg(row.litros, row.combustible), 0);
+    const treesToOffset = computeCo2TreesToOffset(totalCo2);
+    return { totalKm, totalLitros, totalCo2, treesToOffset };
+  }, [co2FilteredRecords]);
+
+  const co2ByVehicleClassStats = useMemo(() => {
+    const map = new Map<
+      string,
+      { claseVehiculo: string; kilometraje: number; litros: number; co2Kg: number; vehiculos: Set<string> }
+    >();
+    co2FilteredRecords.forEach((row) => {
+      const entry = map.get(row.claseVehiculo) ?? {
+        claseVehiculo: row.claseVehiculo,
+        kilometraje: 0,
+        litros: 0,
+        co2Kg: 0,
+        vehiculos: new Set<string>()
+      };
+      entry.kilometraje += row.kilometraje;
+      entry.litros += row.litros;
+      entry.co2Kg += computeCo2Kg(row.litros, row.combustible);
+      entry.vehiculos.add(row.placa);
+      map.set(row.claseVehiculo, entry);
+    });
+    return Array.from(map.values())
+      .map((entry) => ({ ...entry, vehiculosCount: entry.vehiculos.size }))
+      .sort((a, b) => b.co2Kg - a.co2Kg);
+  }, [co2FilteredRecords]);
+
+  const co2ByFuelStats = useMemo(() => {
+    const map = new Map<string, { combustible: string; kilometraje: number; litros: number; co2Kg: number; vehiculos: Set<string> }>();
+    co2FilteredRecords.forEach((row) => {
+      const entry = map.get(row.combustible) ?? {
+        combustible: row.combustible,
+        kilometraje: 0,
+        litros: 0,
+        co2Kg: 0,
+        vehiculos: new Set<string>()
+      };
+      entry.kilometraje += row.kilometraje;
+      entry.litros += row.litros;
+      entry.co2Kg += computeCo2Kg(row.litros, row.combustible);
+      entry.vehiculos.add(row.placa);
+      map.set(row.combustible, entry);
+    });
+    return Array.from(map.values())
+      .map((entry) => ({ ...entry, vehiculosCount: entry.vehiculos.size }))
+      .sort((a, b) => b.co2Kg - a.co2Kg);
+  }, [co2FilteredRecords]);
+
+  const co2MonthlyTrend = useMemo(() => {
+    const map = new Map<string, { year: number; month: number; kilometraje: number; litros: number; co2Kg: number }>();
+    co2FilteredRecords.forEach((row) => {
+      const key = `${row.year}-${row.month}`;
+      const entry = map.get(key) ?? { year: row.year, month: row.month, kilometraje: 0, litros: 0, co2Kg: 0 };
+      entry.kilometraje += row.kilometraje;
+      entry.litros += row.litros;
+      entry.co2Kg += computeCo2Kg(row.litros, row.combustible);
+      map.set(key, entry);
+    });
+    return Array.from(map.values()).sort((a, b) => (a.year - b.year) || (a.month - b.month));
+  }, [co2FilteredRecords]);
+
+  const residuosYearOptions = useMemo(
+    () =>
+      Array.from(new Set(residuosMantenimientoRecords.map((row) => row.year)))
+        .sort((a, b) => b - a)
+        .map(String),
+    [residuosMantenimientoRecords]
+  );
+
+  const residuosTipoOptions = useMemo(
+    () => Array.from(new Set(residuosMantenimientoRecords.map((row) => row.residuo))).sort(),
+    [residuosMantenimientoRecords]
+  );
+
+  const residuosGestorOptions = useMemo(
+    () =>
+      Array.from(new Set(residuosMantenimientoRecords.map((row) => row.gestor).filter(Boolean))).sort(),
+    [residuosMantenimientoRecords]
+  );
+
+  const residuosFilteredRecords = useMemo(() => {
+    const fromMonth = residuosMonthFromFilter ? Number(residuosMonthFromFilter) : null;
+    const toMonth = residuosMonthToFilter ? Number(residuosMonthToFilter) : null;
+    return residuosMantenimientoRecords.filter((row) => {
+      if (residuosYearFilter && String(row.year) !== residuosYearFilter) return false;
+      if (fromMonth || toMonth) {
+        if (fromMonth && row.month < fromMonth) return false;
+        if (toMonth && row.month > toMonth) return false;
+      } else if (residuosMonthFilter && String(row.month) !== residuosMonthFilter) {
+        return false;
+      }
+      if (residuosTipoFilter && row.residuo !== residuosTipoFilter) return false;
+      if (residuosGestorFilter && row.gestor !== residuosGestorFilter) return false;
+      return true;
+    });
+  }, [
+    residuosMantenimientoRecords,
+    residuosYearFilter,
+    residuosMonthFilter,
+    residuosMonthFromFilter,
+    residuosMonthToFilter,
+    residuosTipoFilter,
+    residuosGestorFilter
+  ]);
+
+  // Los indicadores (kg totales, % aprovechado, tipo más generado) se calculan solo sobre los
+  // registros en KILOS, que es la unidad predominante y comparable entre residuos. Galones
+  // (aceites) y Unidades (llantas) se muestran aparte para no mezclar unidades distintas.
+  const residuosKpis = useMemo(() => {
+    const kiloRecords = residuosFilteredRecords.filter((row) => row.unidad === 'KILOS');
+    const totalKg = kiloRecords.reduce((sum, row) => sum + row.cantidad, 0);
+    const aprovechadoKg = kiloRecords
+      .filter((row) => isResiduoAprovechado(row.manejo))
+      .reduce((sum, row) => sum + row.cantidad, 0);
+    const pctAprovechado = totalKg > 0 ? (aprovechadoKg / totalKg) * 100 : 0;
+
+    const byResiduoKg = new Map<string, number>();
+    kiloRecords.forEach((row) => {
+      byResiduoKg.set(row.residuo, (byResiduoKg.get(row.residuo) ?? 0) + row.cantidad);
+    });
+    let topResiduo: { residuo: string; total: number } | null = null;
+    byResiduoKg.forEach((total, residuo) => {
+      if (!topResiduo || total > topResiduo.total) topResiduo = { residuo, total };
+    });
+
+    const llantasUnidades = residuosFilteredRecords
+      .filter((row) => row.unidad === 'UNIDADES' && /llanta/i.test(row.residuo))
+      .reduce((sum, row) => sum + row.cantidad, 0);
+
+    return { totalKg, aprovechadoKg, pctAprovechado, topResiduo, llantasUnidades };
+  }, [residuosFilteredRecords]);
+
+  const residuosByTipoStats = useMemo(() => {
+    const map = new Map<
+      string,
+      { residuo: string; unidad: string; cantidad: number; aprovechado: number }
+    >();
+    residuosFilteredRecords.forEach((row) => {
+      const key = `${row.residuo}__${row.unidad}`;
+      const entry = map.get(key) ?? { residuo: row.residuo, unidad: row.unidad, cantidad: 0, aprovechado: 0 };
+      entry.cantidad += row.cantidad;
+      if (isResiduoAprovechado(row.manejo)) entry.aprovechado += row.cantidad;
+      map.set(key, entry);
+    });
+    return Array.from(map.values()).sort((a, b) => b.cantidad - a.cantidad);
+  }, [residuosFilteredRecords]);
+
+  const residuosByManejoStats = useMemo(() => {
+    const map = new Map<string, { manejo: string; cantidadKg: number }>();
+    residuosFilteredRecords
+      .filter((row) => row.unidad === 'KILOS')
+      .forEach((row) => {
+        const entry = map.get(row.manejo) ?? { manejo: row.manejo || 'Sin dato', cantidadKg: 0 };
+        entry.cantidadKg += row.cantidad;
+        map.set(row.manejo, entry);
+      });
+    return Array.from(map.values()).sort((a, b) => b.cantidadKg - a.cantidadKg);
+  }, [residuosFilteredRecords]);
+
+  const residuosMonthlyTrend = useMemo(() => {
+    const map = new Map<string, { year: number; month: number; cantidadKg: number }>();
+    residuosFilteredRecords
+      .filter((row) => row.unidad === 'KILOS')
+      .forEach((row) => {
+        const key = `${row.year}-${row.month}`;
+        const entry = map.get(key) ?? { year: row.year, month: row.month, cantidadKg: 0 };
+        entry.cantidadKg += row.cantidad;
+        map.set(key, entry);
+      });
+    return Array.from(map.values()).sort((a, b) => (a.year - b.year) || (a.month - b.month));
+  }, [residuosFilteredRecords]);
 
   const medicinaContractStats = useMemo(
     () => groupMedicinaRecords(medicinaFilteredRecords, (row) => row.contract || 'Sin contrato'),
@@ -4181,6 +4484,61 @@ export default function App() {
     };
   };
 
+  // El Excel de CO2 por kilometraje se agrega igual que Consumo servicios públicos: cada
+  // registro se identifica por placa + año + mes + combustible para no duplicar si el mismo
+  // archivo (o uno con meses solapados) se carga más de una vez.
+  const buildCo2RecordKey = (record: Co2KilometrajeRecord) =>
+    [record.placa, record.year, record.month, record.combustible].join('|');
+
+  const mergeCo2Records = (existing: Co2KilometrajeRecord[], imported: Co2KilometrajeRecord[]) => {
+    const existingKeys = new Set(existing.map(buildCo2RecordKey));
+    const toAdd: Co2KilometrajeRecord[] = [];
+
+    imported.forEach((record, index) => {
+      const key = buildCo2RecordKey(record);
+      if (existingKeys.has(key)) return;
+      existingKeys.add(key);
+      toAdd.push({
+        ...record,
+        id: `co2-${Date.now()}-${index}`
+      });
+    });
+
+    return {
+      merged: [...existing, ...toAdd],
+      added: toAdd.length,
+      skipped: imported.length - toAdd.length
+    };
+  };
+
+  // El Excel de Residuos de mantenimiento no trae un identificador único por fila, así que la
+  // llave de deduplicación combina año + mes + gestor + residuo + cantidad + unidad: es
+  // suficiente para no duplicar si el mismo archivo se carga dos veces, sin fusionar entregas
+  // distintas que coincidan por casualidad en todo lo demás.
+  const buildResiduoRecordKey = (record: ResiduoRecord) =>
+    [record.year, record.month, record.gestor, record.residuo, record.cantidad, record.unidad].join('|');
+
+  const mergeResiduoRecords = (existing: ResiduoRecord[], imported: ResiduoRecord[]) => {
+    const existingKeys = new Set(existing.map(buildResiduoRecordKey));
+    const toAdd: ResiduoRecord[] = [];
+
+    imported.forEach((record, index) => {
+      const key = buildResiduoRecordKey(record);
+      if (existingKeys.has(key)) return;
+      existingKeys.add(key);
+      toAdd.push({
+        ...record,
+        id: `res-${Date.now()}-${index}`
+      });
+    });
+
+    return {
+      merged: [...existing, ...toAdd],
+      added: toAdd.length,
+      skipped: imported.length - toAdd.length
+    };
+  };
+
   // Igual que Formación y Medicina del trabajo: los registros del Excel se AGREGAN a los que
   // ya existen (no se reemplaza toda la base). El archivo maestro de comportamientos
   // inseguros trae los años recientes en una hoja separada ("2026 INFRACCIONES") de solo ~74
@@ -4773,6 +5131,217 @@ export default function App() {
     XLSX.writeFile(workbook, `reporte_consumo_servicios_publicos${yearSuffix}.xlsx`);
   };
 
+  const resetCo2Form = () => {
+    setCo2Form({
+      year: String(new Date().getFullYear()),
+      month: '',
+      placa: '',
+      claseVehiculo: '',
+      ciudad: '',
+      combustible: '',
+      kilometraje: '',
+      galones: '',
+      litros: ''
+    });
+    setEditingCo2Id(null);
+  };
+
+  const handleDeleteCo2Record = (row: Co2KilometrajeRecord) => {
+    const confirmed = window.confirm(
+      `¿Eliminar el registro de ${row.placa} (${CO2_MONTH_NAMES[row.month - 1]} ${row.year})? Esta acción no se puede deshacer.`
+    );
+    if (!confirmed) return;
+    setCo2KilometrajeRecords((prev) => prev.filter((item) => item.id !== row.id));
+    if (editingCo2Id === row.id) resetCo2Form();
+  };
+
+  const handleEditCo2Record = (row: Co2KilometrajeRecord) => {
+    setEditingCo2Id(row.id);
+    setCo2Form({
+      year: String(row.year),
+      month: String(row.month),
+      placa: row.placa,
+      claseVehiculo: row.claseVehiculo,
+      ciudad: row.ciudad,
+      combustible: row.combustible,
+      kilometraje: String(row.kilometraje),
+      galones: String(row.galones),
+      litros: String(row.litros)
+    });
+  };
+
+  const handleCo2FormSubmit = () => {
+    const year = Number(co2Form.year);
+    const month = Number(co2Form.month);
+    if (!year || !month || !co2Form.placa.trim() || !co2Form.combustible) {
+      alert('Completa año, mes, placa y combustible para registrar.');
+      return;
+    }
+
+    const nextId = editingCo2Id ?? `co2-${Date.now()}`;
+    const nextRecord: Co2KilometrajeRecord = {
+      id: nextId,
+      year,
+      month,
+      placa: normalizeCo2Placa(co2Form.placa.trim()),
+      claseVehiculo: co2Form.claseVehiculo.trim() || 'SIN CLASE',
+      ciudad: co2Form.ciudad.trim() || 'SIN DATO',
+      combustible: normalizeCo2Fuel(co2Form.combustible),
+      kilometraje: Number(co2Form.kilometraje) || 0,
+      galones: Number(co2Form.galones) || 0,
+      litros: Number(co2Form.litros) || 0
+    };
+
+    if (editingCo2Id) {
+      setCo2KilometrajeRecords((prev) => prev.map((row) => (row.id === editingCo2Id ? nextRecord : row)));
+    } else {
+      setCo2KilometrajeRecords((prev) => [nextRecord, ...prev]);
+    }
+
+    resetCo2Form();
+  };
+
+  const handleDownloadCo2Report = async () => {
+    if (co2FilteredRecords.length === 0) {
+      alert('No hay registros de CO2 por kilometraje para exportar con el filtro actual.');
+      return;
+    }
+    const XLSX = await import('xlsx');
+    const rows = co2FilteredRecords.map((row) => ({
+      AÑO: row.year,
+      MES: CO2_MONTH_NAMES[row.month - 1]?.toUpperCase() ?? row.month,
+      PLACA: row.placa,
+      'CLASE VEHÍCULO': row.claseVehiculo,
+      CIUDAD: row.ciudad,
+      COMBUSTIBLE: row.combustible,
+      'KILOMETRAJE RECORRIDO': row.kilometraje,
+      'GALONES CONSUMIDOS': row.galones,
+      'LITROS CONSUMIDOS': row.litros,
+      'CO2 EMITIDO (KG)': Math.round(computeCo2Kg(row.litros, row.combustible) * 100) / 100
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet['!cols'] = [
+      { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 24 }, { wch: 16 },
+      { wch: 24 }, { wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 16 }
+    ];
+    worksheet['!autofilter'] = { ref: 'A1:J1' };
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'CO2 por kilometraje');
+    const yearSuffix = co2YearFilter ? `_${co2YearFilter}` : '';
+    XLSX.writeFile(workbook, `reporte_co2_kilometraje${yearSuffix}.xlsx`);
+  };
+
+  const resetResiduoForm = () => {
+    setResiduoForm({
+      year: String(new Date().getFullYear()),
+      month: '',
+      gestor: '',
+      empresa: '',
+      residuo: '',
+      corriente: '',
+      descripcion: '',
+      estadoMateria: '',
+      unidad: 'KILOS',
+      manejo: '',
+      cantidad: ''
+    });
+    setEditingResiduoId(null);
+  };
+
+  const handleDeleteResiduoRecord = (row: ResiduoRecord) => {
+    const confirmed = window.confirm(
+      `¿Eliminar el registro de ${row.residuo} (${RESIDUOS_MONTH_NAMES[row.month - 1]} ${row.year})? Esta acción no se puede deshacer.`
+    );
+    if (!confirmed) return;
+    setResiduosMantenimientoRecords((prev) => prev.filter((item) => item.id !== row.id));
+    if (editingResiduoId === row.id) resetResiduoForm();
+  };
+
+  const handleEditResiduoRecord = (row: ResiduoRecord) => {
+    setEditingResiduoId(row.id);
+    setResiduoForm({
+      year: String(row.year),
+      month: String(row.month),
+      gestor: row.gestor,
+      empresa: row.empresa,
+      residuo: row.residuo,
+      corriente: row.corriente,
+      descripcion: row.descripcion,
+      estadoMateria: row.estadoMateria,
+      unidad: row.unidad,
+      manejo: row.manejo,
+      cantidad: String(row.cantidad)
+    });
+  };
+
+  const handleResiduoFormSubmit = () => {
+    const year = Number(residuoForm.year);
+    const month = Number(residuoForm.month);
+    if (!year || !month || !residuoForm.residuo.trim()) {
+      alert('Completa año, mes y residuo para registrar.');
+      return;
+    }
+
+    const nextId = editingResiduoId ?? `res-${Date.now()}`;
+    const nextRecord: ResiduoRecord = {
+      id: nextId,
+      year,
+      month,
+      gestor: residuoForm.gestor.trim(),
+      empresa: residuoForm.empresa.trim(),
+      residuo: residuoForm.residuo.trim(),
+      corriente: residuoForm.corriente.trim(),
+      descripcion: residuoForm.descripcion.trim(),
+      estadoMateria: residuoForm.estadoMateria.trim(),
+      unidad: normalizeResiduoUnidad(residuoForm.unidad),
+      manejo: residuoForm.manejo.trim(),
+      cantidad: Number(residuoForm.cantidad) || 0
+    };
+
+    if (editingResiduoId) {
+      setResiduosMantenimientoRecords((prev) => prev.map((row) => (row.id === editingResiduoId ? nextRecord : row)));
+    } else {
+      setResiduosMantenimientoRecords((prev) => [nextRecord, ...prev]);
+    }
+
+    resetResiduoForm();
+  };
+
+  const handleDownloadResiduosReport = async () => {
+    if (residuosFilteredRecords.length === 0) {
+      alert('No hay registros de residuos de mantenimiento para exportar con el filtro actual.');
+      return;
+    }
+    const XLSX = await import('xlsx');
+    const rows = residuosFilteredRecords.map((row) => ({
+      AÑO: row.year,
+      MES: RESIDUOS_MONTH_NAMES[row.month - 1]?.toUpperCase() ?? row.month,
+      GESTOR: row.gestor,
+      EMPRESA: row.empresa,
+      RESIDUO: row.residuo,
+      CORRIENTE: row.corriente,
+      DESCRIPCIÓN: row.descripcion,
+      'ESTADO MATERIA': row.estadoMateria,
+      UNIDAD: row.unidad,
+      MANEJO: row.manejo,
+      CANTIDAD: row.cantidad
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet['!cols'] = [
+      { wch: 8 }, { wch: 12 }, { wch: 20 }, { wch: 20 }, { wch: 22 },
+      { wch: 20 }, { wch: 24 }, { wch: 16 }, { wch: 12 }, { wch: 20 }, { wch: 12 }
+    ];
+    worksheet['!autofilter'] = { ref: 'A1:K1' };
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Residuos mantenimiento');
+    const yearSuffix = residuosYearFilter ? `_${residuosYearFilter}` : '';
+    XLSX.writeFile(workbook, `reporte_residuos_mantenimiento${yearSuffix}.xlsx`);
+  };
+
   const handleDemoExcelUpload = async (file: File) => {
     const service = selectedServiceMenuItem as SgiDemoExcelService;
     const supportedServices: SgiDemoExcelService[] = [
@@ -4781,7 +5350,9 @@ export default function App() {
       'Incapacidades',
       'Formación',
       'Medicina del trabajo',
-      'Consumo servicios públicos'
+      'Consumo servicios públicos',
+      'CO2 por kilometraje',
+      'Residuos de mantenimiento'
     ];
 
     if (!supportedServices.includes(service)) {
@@ -4846,6 +5417,35 @@ export default function App() {
         const outcome = mergePublicServiceRecords(publicServiceRecords, imported);
         setPublicServiceRecords(outcome.merged);
         resetPublicServiceForm();
+        alert(
+          `Se agregaron ${outcome.added} registros nuevos desde "${file.name}"` +
+            `${outcome.skipped ? ` (${outcome.skipped} duplicados omitidos)` : ''}. ` +
+            `Total en base de datos: ${outcome.merged.length}.`
+        );
+        return;
+      } else if (service === 'CO2 por kilometraje') {
+        const imported = (result.records as Co2KilometrajeRecord[]).map((row) => ({
+          ...row,
+          placa: normalizeCo2Placa(row.placa),
+          combustible: normalizeCo2Fuel(row.combustible)
+        }));
+        const outcome = mergeCo2Records(co2KilometrajeRecords, imported);
+        setCo2KilometrajeRecords(outcome.merged);
+        resetCo2Form();
+        alert(
+          `Se agregaron ${outcome.added} registros nuevos desde "${file.name}"` +
+            `${outcome.skipped ? ` (${outcome.skipped} duplicados omitidos)` : ''}. ` +
+            `Total en base de datos: ${outcome.merged.length}.`
+        );
+        return;
+      } else if (service === 'Residuos de mantenimiento') {
+        const imported = (result.records as ResiduoRecord[]).map((row) => ({
+          ...row,
+          unidad: normalizeResiduoUnidad(row.unidad)
+        }));
+        const outcome = mergeResiduoRecords(residuosMantenimientoRecords, imported);
+        setResiduosMantenimientoRecords(outcome.merged);
+        resetResiduoForm();
         alert(
           `Se agregaron ${outcome.added} registros nuevos desde "${file.name}"` +
             `${outcome.skipped ? ` (${outcome.skipped} duplicados omitidos)` : ''}. ` +
@@ -5292,6 +5892,8 @@ export default function App() {
     setMedicinaTrabajoRecords(initialMedicinaTrabajoRecords.map((row) => ({ ...row })));
     setPublicServiceRecords(INITIAL_PUBLIC_SERVICE_RECORDS.map((row) => ({ ...row })));
     setPublicServiceIndicatorRecords(INITIAL_PUBLIC_SERVICE_INDICATOR_RECORDS.map((row) => ({ ...row })));
+    setCo2KilometrajeRecords(INITIAL_CO2_KILOMETRAJE_RECORDS.map((row) => ({ ...row })));
+    setResiduosMantenimientoRecords(INITIAL_RESIDUOS_MANTENIMIENTO_RECORDS.map((row) => ({ ...row })));
     setIncapDemoInformeEdits({});
     setFormacionDemoInformeEdits({});
     setSgiStartDate('');
@@ -7743,6 +8345,1125 @@ export default function App() {
                         )}
                       </tbody>
                     </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {selectedServiceMenuItem === 'CO2 por kilometraje' && (
+              <div className="bg-white border border-[#eaecf0] rounded-soft p-4 shadow-sm space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {sgiCanEditDatasets && (
+                      <button
+                        onClick={() => setShowCo2Entry((prev) => !prev)}
+                        className={`px-3 py-2 rounded-soft text-xs font-semibold border transition-colors ${
+                          showCo2Entry
+                            ? 'border-[#00502c] bg-[#00502c] text-white'
+                            : 'border-[#d6dce5] bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        Ingreso base de datos
+                      </button>
+                    )}
+                    <button
+                      onClick={handleDownloadCo2Report}
+                      className="px-3 py-2 rounded-soft text-xs font-semibold border border-[#006b3d] bg-[#006b3d] text-white hover:bg-[#00502c] transition-colors"
+                    >
+                      Descargar reporte
+                    </button>
+                    {sgiCanEditDatasets && (
+                      <DemoExcelUploadButton onFileSelected={handleDemoExcelUpload} loading={isDemoExcelLoading} />
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={co2YearFilter}
+                      onChange={(e) => setCo2YearFilter(e.target.value)}
+                      className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                    >
+                      <option value="">Todos los años</option>
+                      {co2YearOptions.map((year) => (
+                        <option key={`co2-year-${year}`} value={year}>{year}</option>
+                      ))}
+                    </select>
+                    {!showCo2MonthRange ? (
+                      <select
+                        value={co2MonthFilter}
+                        onChange={(e) => setCo2MonthFilter(e.target.value)}
+                        className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                      >
+                        <option value="">Todos los meses</option>
+                        {CO2_MONTH_NAMES.map((name, index) => (
+                          <option key={`co2-month-${index + 1}`} value={String(index + 1)}>
+                            {name.charAt(0).toUpperCase() + name.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={co2MonthFromFilter}
+                          onChange={(e) => setCo2MonthFromFilter(e.target.value)}
+                          className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                        >
+                          <option value="">Mes desde</option>
+                          {CO2_MONTH_NAMES.map((name, index) => (
+                            <option key={`co2-month-from-${index + 1}`} value={String(index + 1)}>
+                              {name.charAt(0).toUpperCase() + name.slice(1)}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="text-xs text-gray-400">a</span>
+                        <select
+                          value={co2MonthToFilter}
+                          onChange={(e) => setCo2MonthToFilter(e.target.value)}
+                          className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                        >
+                          <option value="">Mes hasta</option>
+                          {CO2_MONTH_NAMES.map((name, index) => (
+                            <option key={`co2-month-to-${index + 1}`} value={String(index + 1)}>
+                              {name.charAt(0).toUpperCase() + name.slice(1)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowCo2MonthRange((prev) => {
+                          const next = !prev;
+                          if (next) {
+                            setCo2MonthFilter('');
+                          } else {
+                            setCo2MonthFromFilter('');
+                            setCo2MonthToFilter('');
+                          }
+                          return next;
+                        })
+                      }
+                      className={`px-2 py-1.5 rounded-soft text-xs font-semibold border transition-colors ${
+                        showCo2MonthRange
+                          ? 'border-[#00502c] bg-[#00502c] text-white'
+                          : 'border-[#d6dce5] bg-white text-gray-700 hover:bg-gray-50'
+                      }`}
+                      title="Filtrar por rango de meses, por ejemplo de enero a marzo"
+                    >
+                      Rango de meses
+                    </button>
+                    <select
+                      value={co2PlacaFilter}
+                      onChange={(e) => setCo2PlacaFilter(e.target.value)}
+                      className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white max-w-[140px]"
+                    >
+                      <option value="">Todas las placas</option>
+                      {co2PlacaOptions.map((placa) => (
+                        <option key={`co2-placa-${placa}`} value={placa}>{placa}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={co2FuelFilter}
+                      onChange={(e) => setCo2FuelFilter(e.target.value)}
+                      className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white max-w-[180px]"
+                    >
+                      <option value="">Todos los combustibles</option>
+                      {CO2_FUEL_OPTIONS.map((fuel) => (
+                        <option key={`co2-fuel-${fuel}`} value={fuel}>{fuel}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    { key: 'detalle', label: 'Detalle general' },
+                    { key: 'vehiculo', label: 'Por tipo de vehículo' },
+                    { key: 'tendencia', label: 'Tendencia mensual' }
+                  ] as const).map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setCo2Tab(tab.key)}
+                      className={`px-3 py-1.5 rounded-soft text-xs font-semibold transition-colors ${
+                        co2Tab === tab.key
+                          ? 'bg-[#00502c] text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-gray-50 rounded-soft p-3.5">
+                    <p className="text-xs text-gray-500 flex items-center gap-1.5"><Route size={13} />Km recorridos</p>
+                    <p className="text-xl font-bold text-[#191c1d] mt-1">
+                      {Math.round(co2Kpis.totalKm).toLocaleString('es-CO')} km
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-soft p-3.5">
+                    <p className="text-xs text-gray-500 flex items-center gap-1.5"><Fuel size={13} />Combustible</p>
+                    <p className="text-xl font-bold text-[#191c1d] mt-1">
+                      {Math.round(co2Kpis.totalLitros).toLocaleString('es-CO')} L
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-soft p-3.5">
+                    <p className="text-xs text-gray-500 flex items-center gap-1.5"><Cloud size={13} />CO2 emitido</p>
+                    <p className="text-xl font-bold text-[#191c1d] mt-1">
+                      {Math.round(co2Kpis.totalCo2).toLocaleString('es-CO')} kg
+                    </p>
+                  </div>
+                  <div className="bg-emerald-50 rounded-soft p-3.5">
+                    <p className="text-xs text-[#00502c] flex items-center gap-1.5"><Leaf size={13} />Árboles a compensar</p>
+                    <p className="text-xl font-bold text-[#00502c] mt-1">
+                      {Math.round(co2Kpis.treesToOffset).toLocaleString('es-CO')}
+                    </p>
+                  </div>
+                </div>
+
+                {showCo2Entry && sgiCanEditDatasets && (
+                  <div className="border border-[#eaecf0] rounded-soft p-3.5 bg-gray-50 space-y-3">
+                    <p className="text-[11px] text-gray-500">
+                      El CO2 emitido (kg) se calcula automáticamente como litros consumidos x factor de emisión del
+                      combustible seleccionado, igual que en la hoja de Parámetros del Excel de origen.
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      <input
+                        type="number"
+                        placeholder="Año"
+                        value={co2Form.year}
+                        onChange={(e) => setCo2Form((p) => ({ ...p, year: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <select
+                        value={co2Form.month}
+                        onChange={(e) => setCo2Form((p) => ({ ...p, month: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      >
+                        <option value="">Mes</option>
+                        {CO2_MONTH_NAMES.map((name, index) => (
+                          <option key={`co2-form-month-${index + 1}`} value={String(index + 1)}>
+                            {name.charAt(0).toUpperCase() + name.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        list="co2-placa-options"
+                        placeholder="Placa"
+                        value={co2Form.placa}
+                        onChange={(e) => setCo2Form((p) => ({ ...p, placa: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <datalist id="co2-placa-options">
+                        {co2PlacaOptions.map((placa) => (
+                          <option key={`co2-placa-option-${placa}`} value={placa} />
+                        ))}
+                      </datalist>
+                      <select
+                        value={co2Form.combustible}
+                        onChange={(e) => setCo2Form((p) => ({ ...p, combustible: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      >
+                        <option value="">Combustible</option>
+                        {CO2_FUEL_OPTIONS.map((fuel) => (
+                          <option key={`co2-form-fuel-${fuel}`} value={fuel}>{fuel}</option>
+                        ))}
+                      </select>
+                      <input
+                        placeholder="Clase de vehículo"
+                        value={co2Form.claseVehiculo}
+                        onChange={(e) => setCo2Form((p) => ({ ...p, claseVehiculo: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        placeholder="Ciudad"
+                        value={co2Form.ciudad}
+                        onChange={(e) => setCo2Form((p) => ({ ...p, ciudad: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Kilometraje recorrido"
+                        value={co2Form.kilometraje}
+                        onChange={(e) => setCo2Form((p) => ({ ...p, kilometraje: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Galones"
+                        value={co2Form.galones}
+                        onChange={(e) => setCo2Form((p) => ({ ...p, galones: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Litros"
+                        value={co2Form.litros}
+                        onChange={(e) => setCo2Form((p) => ({ ...p, litros: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleCo2FormSubmit}
+                        className="px-4 py-2 rounded-soft text-xs font-semibold bg-[#00502c] text-white hover:bg-[#006b3d] transition-colors"
+                      >
+                        {editingCo2Id ? 'Actualizar' : 'Registrar'}
+                      </button>
+                      {editingCo2Id && (
+                        <button
+                          onClick={resetCo2Form}
+                          className="px-4 py-2 rounded-soft text-xs font-semibold border border-[#d6dce5] text-gray-600 hover:bg-gray-100 transition-colors"
+                        >
+                          Cancelar edición
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="overflow-x-auto border-t border-[#eaecf0] pt-3">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-gray-500 border-b border-[#eaecf0]">
+                            <th className="px-2 py-2">Año</th>
+                            <th className="px-2 py-2">Mes</th>
+                            <th className="px-2 py-2">Placa</th>
+                            <th className="px-2 py-2">Combustible</th>
+                            <th className="px-2 py-2 text-right">Km</th>
+                            <th className="px-2 py-2 text-right">Litros</th>
+                            <th className="px-2 py-2 text-right">CO2 kg</th>
+                            <th className="px-2 py-2">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {co2FilteredRecords.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="px-2 py-6 text-center text-gray-400">
+                                No hay registros con el filtro actual.
+                              </td>
+                            </tr>
+                          ) : (
+                            co2FilteredRecords.map((row) => (
+                              <tr key={row.id} className="border-b border-[#f1f3f6] hover:bg-gray-50">
+                                <td className="px-2 py-2">{row.year}</td>
+                                <td className="px-2 py-2 capitalize">{CO2_MONTH_NAMES[row.month - 1]}</td>
+                                <td className="px-2 py-2">{row.placa}</td>
+                                <td className="px-2 py-2">{row.combustible}</td>
+                                <td className="px-2 py-2 text-right">{Math.round(row.kilometraje).toLocaleString('es-CO')}</td>
+                                <td className="px-2 py-2 text-right">{Math.round(row.litros).toLocaleString('es-CO')}</td>
+                                <td className="px-2 py-2 text-right">
+                                  {Math.round(computeCo2Kg(row.litros, row.combustible)).toLocaleString('es-CO')}
+                                </td>
+                                <td className="px-2 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => handleEditCo2Record(row)}
+                                      className="text-[#006b3d] hover:underline"
+                                    >
+                                      Editar
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteCo2Record(row)}
+                                      className="text-[#93000a] hover:underline"
+                                    >
+                                      Borrar
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {co2Tab === 'detalle' && (
+                  <div className="space-y-5">
+                    <div className="overflow-x-auto">
+                      <p className="text-xs font-bold text-[#00502c] uppercase tracking-wide mb-2">
+                        CO2 emitido por tipo de combustible
+                      </p>
+                      {co2ByFuelStats.length === 0 ? (
+                        <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>
+                      ) : (
+                        <div className="flex items-end gap-2 min-w-max px-1 py-2">
+                          {(() => {
+                            const maxCo2 = Math.max(...co2ByFuelStats.map((row) => row.co2Kg), 1);
+                            return co2ByFuelStats.map((row) => {
+                              const barHeight = getScaledBarHeight(row.co2Kg, maxCo2);
+                              return (
+                                <div key={row.combustible} className="w-[92px] flex flex-col items-center shrink-0">
+                                  <span className="text-[10px] font-mono font-semibold text-[#00502c] mb-1 whitespace-nowrap">
+                                    {Math.round(row.co2Kg / 1000)}t
+                                  </span>
+                                  <div className="h-40 w-full flex items-end justify-center">
+                                    <div
+                                      className="w-[34px] rounded-t-sm shrink-0"
+                                      style={{
+                                        height: `${barHeight}%`,
+                                        minHeight: barHeight <= 0 ? '2px' : '6px',
+                                        backgroundColor: '#00502c'
+                                      }}
+                                      title={`${row.combustible}: ${Math.round(row.co2Kg).toLocaleString('es-CO')} kg`}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-gray-500 text-center mt-1.5 leading-tight break-words">
+                                    {row.combustible}
+                                  </span>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-gray-500 border-b border-[#eaecf0]">
+                            <th className="px-2 py-2">Combustible</th>
+                            <th className="px-2 py-2 text-right">Vehículos</th>
+                            <th className="px-2 py-2 text-right">Km</th>
+                            <th className="px-2 py-2 text-right">Litros</th>
+                            <th className="px-2 py-2 text-right">CO2 kg</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {co2ByFuelStats.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="px-2 py-6 text-center text-gray-400">
+                                No hay datos con el filtro actual.
+                              </td>
+                            </tr>
+                          ) : (
+                            <>
+                              {co2ByFuelStats.map((row) => (
+                                <tr key={row.combustible} className="border-b border-[#f1f3f6] hover:bg-gray-50">
+                                  <td className="px-2 py-2">{row.combustible}</td>
+                                  <td className="px-2 py-2 text-right">{row.vehiculosCount}</td>
+                                  <td className="px-2 py-2 text-right">{Math.round(row.kilometraje).toLocaleString('es-CO')}</td>
+                                  <td className="px-2 py-2 text-right">{Math.round(row.litros).toLocaleString('es-CO')}</td>
+                                  <td className="px-2 py-2 text-right">{Math.round(row.co2Kg).toLocaleString('es-CO')}</td>
+                                </tr>
+                              ))}
+                              <tr className="font-semibold text-[#00502c]">
+                                <td className="px-2 py-2">Total</td>
+                                <td className="px-2 py-2 text-right">{co2PlacaOptions.length}</td>
+                                <td className="px-2 py-2 text-right">{Math.round(co2Kpis.totalKm).toLocaleString('es-CO')}</td>
+                                <td className="px-2 py-2 text-right">{Math.round(co2Kpis.totalLitros).toLocaleString('es-CO')}</td>
+                                <td className="px-2 py-2 text-right">{Math.round(co2Kpis.totalCo2).toLocaleString('es-CO')}</td>
+                              </tr>
+                            </>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {co2Tab === 'vehiculo' && (
+                  <div className="space-y-5">
+                    <div className="overflow-x-auto">
+                      <p className="text-xs font-bold text-[#a15c00] uppercase tracking-wide mb-2">
+                        CO2 emitido por tipo de vehículo
+                      </p>
+                      {co2ByVehicleClassStats.length === 0 ? (
+                        <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>
+                      ) : (
+                        <div className="flex items-end gap-2 min-w-max px-1 py-2">
+                          {(() => {
+                            const maxCo2 = Math.max(...co2ByVehicleClassStats.map((row) => row.co2Kg), 1);
+                            return co2ByVehicleClassStats.map((row) => {
+                              const barHeight = getScaledBarHeight(row.co2Kg, maxCo2);
+                              return (
+                                <div key={row.claseVehiculo} className="w-[86px] flex flex-col items-center shrink-0">
+                                  <span className="text-[10px] font-mono font-semibold text-[#a15c00] mb-1 whitespace-nowrap">
+                                    {Math.round(row.co2Kg / 1000)}t
+                                  </span>
+                                  <div className="h-40 w-full flex items-end justify-center">
+                                    <div
+                                      className="w-[32px] rounded-t-sm shrink-0"
+                                      style={{
+                                        height: `${barHeight}%`,
+                                        minHeight: barHeight <= 0 ? '2px' : '6px',
+                                        backgroundColor: '#ffb300'
+                                      }}
+                                      title={`${row.claseVehiculo}: ${Math.round(row.co2Kg).toLocaleString('es-CO')} kg`}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-gray-500 text-center mt-1.5 leading-tight break-words">
+                                    {row.claseVehiculo}
+                                  </span>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-gray-500 border-b border-[#eaecf0]">
+                            <th className="px-2 py-2">Clase de vehículo</th>
+                            <th className="px-2 py-2 text-right">Vehículos</th>
+                            <th className="px-2 py-2 text-right">Km</th>
+                            <th className="px-2 py-2 text-right">Litros</th>
+                            <th className="px-2 py-2 text-right">CO2 kg</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {co2ByVehicleClassStats.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="px-2 py-6 text-center text-gray-400">
+                                No hay datos con el filtro actual.
+                              </td>
+                            </tr>
+                          ) : (
+                            co2ByVehicleClassStats.map((row) => (
+                              <tr key={row.claseVehiculo} className="border-b border-[#f1f3f6] hover:bg-gray-50">
+                                <td className="px-2 py-2">{row.claseVehiculo}</td>
+                                <td className="px-2 py-2 text-right">{row.vehiculosCount}</td>
+                                <td className="px-2 py-2 text-right">{Math.round(row.kilometraje).toLocaleString('es-CO')}</td>
+                                <td className="px-2 py-2 text-right">{Math.round(row.litros).toLocaleString('es-CO')}</td>
+                                <td className="px-2 py-2 text-right">{Math.round(row.co2Kg).toLocaleString('es-CO')}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {co2Tab === 'tendencia' && (
+                  <div className="space-y-6">
+                    <div className="overflow-x-auto">
+                      <p className="text-xs font-bold text-[#00502c] uppercase tracking-wide mb-2">
+                        Tendencia mensual de CO2 emitido (kg)
+                      </p>
+                      {co2MonthlyTrend.length === 0 ? (
+                        <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>
+                      ) : (
+                        <div className="flex items-end gap-2 min-w-max px-1 py-2">
+                          {(() => {
+                            const maxCo2 = Math.max(...co2MonthlyTrend.map((row) => row.co2Kg), 1);
+                            return co2MonthlyTrend.map((row) => {
+                              const barHeight = getScaledBarHeight(row.co2Kg, maxCo2);
+                              return (
+                                <div key={`co2-${row.year}-${row.month}`} className="w-[62px] flex flex-col items-center shrink-0">
+                                  <span className="text-[10px] font-mono font-semibold text-[#00502c] mb-1 whitespace-nowrap">
+                                    {Math.round(row.co2Kg / 1000)}t
+                                  </span>
+                                  <div className="h-40 w-full flex items-end justify-center">
+                                    <div
+                                      className="w-[30px] rounded-t-sm shrink-0"
+                                      style={{
+                                        height: `${barHeight}%`,
+                                        minHeight: barHeight <= 0 ? '2px' : '6px',
+                                        backgroundColor: '#00502c'
+                                      }}
+                                      title={`${CO2_MONTH_NAMES[row.month - 1]} ${row.year}: ${Math.round(row.co2Kg).toLocaleString('es-CO')} kg`}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-gray-500 text-center mt-1.5 leading-tight whitespace-nowrap">
+                                    {CO2_MONTH_NAMES[row.month - 1]?.slice(0, 3)} {row.year}
+                                  </span>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="overflow-x-auto border-t border-[#eaecf0] pt-4">
+                      <p className="text-xs font-bold text-[#1e3a8a] uppercase tracking-wide mb-2">
+                        Tendencia mensual de kilometraje (km)
+                      </p>
+                      {co2MonthlyTrend.length === 0 ? (
+                        <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>
+                      ) : (
+                        <div className="flex items-end gap-2 min-w-max px-1 py-2">
+                          {(() => {
+                            const maxKm = Math.max(...co2MonthlyTrend.map((row) => row.kilometraje), 1);
+                            return co2MonthlyTrend.map((row) => {
+                              const barHeight = getScaledBarHeight(row.kilometraje, maxKm);
+                              return (
+                                <div key={`km-${row.year}-${row.month}`} className="w-[62px] flex flex-col items-center shrink-0">
+                                  <span className="text-[10px] font-mono font-semibold text-[#1e3a8a] mb-1 whitespace-nowrap">
+                                    {Math.round(row.kilometraje / 1000)}k
+                                  </span>
+                                  <div className="h-40 w-full flex items-end justify-center">
+                                    <div
+                                      className="w-[30px] rounded-t-sm shrink-0"
+                                      style={{
+                                        height: `${barHeight}%`,
+                                        minHeight: barHeight <= 0 ? '2px' : '6px',
+                                        backgroundColor: '#4169e1'
+                                      }}
+                                      title={`${CO2_MONTH_NAMES[row.month - 1]} ${row.year}: ${Math.round(row.kilometraje).toLocaleString('es-CO')} km`}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-gray-500 text-center mt-1.5 leading-tight whitespace-nowrap">
+                                    {CO2_MONTH_NAMES[row.month - 1]?.slice(0, 3)} {row.year}
+                                  </span>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {selectedServiceMenuItem === 'Residuos de mantenimiento' && (
+              <div className="bg-white border border-[#eaecf0] rounded-soft p-4 shadow-sm space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {sgiCanEditDatasets && (
+                      <button
+                        onClick={() => setShowResiduosEntry((prev) => !prev)}
+                        className={`px-3 py-2 rounded-soft text-xs font-semibold border transition-colors ${
+                          showResiduosEntry
+                            ? 'border-[#00502c] bg-[#00502c] text-white'
+                            : 'border-[#d6dce5] bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        Ingreso base de datos
+                      </button>
+                    )}
+                    <button
+                      onClick={handleDownloadResiduosReport}
+                      className="px-3 py-2 rounded-soft text-xs font-semibold border border-[#006b3d] bg-[#006b3d] text-white hover:bg-[#00502c] transition-colors"
+                    >
+                      Descargar reporte
+                    </button>
+                    {sgiCanEditDatasets && (
+                      <DemoExcelUploadButton onFileSelected={handleDemoExcelUpload} loading={isDemoExcelLoading} />
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={residuosYearFilter}
+                      onChange={(e) => setResiduosYearFilter(e.target.value)}
+                      className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                    >
+                      <option value="">Todos los años</option>
+                      {residuosYearOptions.map((year) => (
+                        <option key={`res-year-${year}`} value={year}>{year}</option>
+                      ))}
+                    </select>
+                    {!showResiduosMonthRange ? (
+                      <select
+                        value={residuosMonthFilter}
+                        onChange={(e) => setResiduosMonthFilter(e.target.value)}
+                        className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                      >
+                        <option value="">Todos los meses</option>
+                        {RESIDUOS_MONTH_NAMES.map((name, index) => (
+                          <option key={`res-month-${index + 1}`} value={String(index + 1)}>
+                            {name.charAt(0).toUpperCase() + name.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={residuosMonthFromFilter}
+                          onChange={(e) => setResiduosMonthFromFilter(e.target.value)}
+                          className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                        >
+                          <option value="">Mes desde</option>
+                          {RESIDUOS_MONTH_NAMES.map((name, index) => (
+                            <option key={`res-month-from-${index + 1}`} value={String(index + 1)}>
+                              {name.charAt(0).toUpperCase() + name.slice(1)}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="text-xs text-gray-400">a</span>
+                        <select
+                          value={residuosMonthToFilter}
+                          onChange={(e) => setResiduosMonthToFilter(e.target.value)}
+                          className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white"
+                        >
+                          <option value="">Mes hasta</option>
+                          {RESIDUOS_MONTH_NAMES.map((name, index) => (
+                            <option key={`res-month-to-${index + 1}`} value={String(index + 1)}>
+                              {name.charAt(0).toUpperCase() + name.slice(1)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowResiduosMonthRange((prev) => {
+                          const next = !prev;
+                          if (next) {
+                            setResiduosMonthFilter('');
+                          } else {
+                            setResiduosMonthFromFilter('');
+                            setResiduosMonthToFilter('');
+                          }
+                          return next;
+                        })
+                      }
+                      className={`px-2 py-1.5 rounded-soft text-xs font-semibold border transition-colors ${
+                        showResiduosMonthRange
+                          ? 'border-[#00502c] bg-[#00502c] text-white'
+                          : 'border-[#d6dce5] bg-white text-gray-700 hover:bg-gray-50'
+                      }`}
+                      title="Filtrar por rango de meses, por ejemplo de enero a marzo"
+                    >
+                      Rango de meses
+                    </button>
+                    <select
+                      value={residuosTipoFilter}
+                      onChange={(e) => setResiduosTipoFilter(e.target.value)}
+                      className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white max-w-[180px]"
+                    >
+                      <option value="">Todos los residuos</option>
+                      {residuosTipoOptions.map((tipo) => (
+                        <option key={`res-tipo-${tipo}`} value={tipo}>{tipo}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={residuosGestorFilter}
+                      onChange={(e) => setResiduosGestorFilter(e.target.value)}
+                      className="px-2 py-1.5 text-xs border border-[#d6dce5] rounded-soft bg-white max-w-[180px]"
+                    >
+                      <option value="">Todos los gestores</option>
+                      {residuosGestorOptions.map((gestor) => (
+                        <option key={`res-gestor-${gestor}`} value={gestor}>{gestor}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    { key: 'detalle', label: 'Detalle general' },
+                    { key: 'tipo', label: 'Por tipo de residuo' },
+                    { key: 'manejo', label: 'Manejo' }
+                  ] as const).map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setResiduosTab(tab.key)}
+                      className={`px-3 py-1.5 rounded-soft text-xs font-semibold transition-colors ${
+                        residuosTab === tab.key
+                          ? 'bg-[#00502c] text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-gray-50 rounded-soft p-3.5">
+                    <p className="text-xs text-gray-500 flex items-center gap-1.5"><Layers size={13} />Residuos totales</p>
+                    <p className="text-xl font-bold text-[#191c1d] mt-1">
+                      {Math.round(residuosKpis.totalKg).toLocaleString('es-CO')} kg
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-soft p-3.5">
+                    <p className="text-xs text-gray-500 flex items-center gap-1.5"><Hash size={13} />Tipo más generado</p>
+                    {residuosKpis.topResiduo ? (
+                      <>
+                        <p className="text-sm font-bold text-[#191c1d] mt-1">{residuosKpis.topResiduo.residuo}</p>
+                        <p className="text-[11px] text-gray-500">
+                          {Math.round(residuosKpis.topResiduo.total).toLocaleString('es-CO')} kg
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-400 mt-1">Sin datos</p>
+                    )}
+                  </div>
+                  <div className="bg-gray-50 rounded-soft p-3.5">
+                    <p className="text-xs text-gray-500 flex items-center gap-1.5"><Truck size={13} />Llantas entregadas</p>
+                    <p className="text-xl font-bold text-[#191c1d] mt-1">
+                      {Math.round(residuosKpis.llantasUnidades).toLocaleString('es-CO')}
+                    </p>
+                  </div>
+                  <div className="bg-emerald-50 rounded-soft p-3.5">
+                    <p className="text-xs text-[#00502c] flex items-center gap-1.5"><Leaf size={13} />% Aprovechado</p>
+                    <p className="text-xl font-bold text-[#00502c] mt-1">
+                      {residuosKpis.pctAprovechado.toFixed(1)}%
+                    </p>
+                  </div>
+                </div>
+
+                {showResiduosEntry && sgiCanEditDatasets && (
+                  <div className="border border-[#eaecf0] rounded-soft p-3.5 bg-gray-50 space-y-3">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      <input
+                        type="number"
+                        placeholder="Año"
+                        value={residuoForm.year}
+                        onChange={(e) => setResiduoForm((p) => ({ ...p, year: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <select
+                        value={residuoForm.month}
+                        onChange={(e) => setResiduoForm((p) => ({ ...p, month: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      >
+                        <option value="">Mes</option>
+                        {RESIDUOS_MONTH_NAMES.map((name, index) => (
+                          <option key={`res-form-month-${index + 1}`} value={String(index + 1)}>
+                            {name.charAt(0).toUpperCase() + name.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        list="res-gestor-options"
+                        placeholder="Gestor del residuo"
+                        value={residuoForm.gestor}
+                        onChange={(e) => setResiduoForm((p) => ({ ...p, gestor: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <datalist id="res-gestor-options">
+                        {residuosGestorOptions.map((gestor) => (
+                          <option key={`res-gestor-option-${gestor}`} value={gestor} />
+                        ))}
+                      </datalist>
+                      <input
+                        placeholder="Empresa"
+                        value={residuoForm.empresa}
+                        onChange={(e) => setResiduoForm((p) => ({ ...p, empresa: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        list="res-tipo-options"
+                        placeholder="Residuo"
+                        value={residuoForm.residuo}
+                        onChange={(e) => setResiduoForm((p) => ({ ...p, residuo: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <datalist id="res-tipo-options">
+                        {residuosTipoOptions.map((tipo) => (
+                          <option key={`res-tipo-option-${tipo}`} value={tipo} />
+                        ))}
+                      </datalist>
+                      <input
+                        placeholder="Corriente"
+                        value={residuoForm.corriente}
+                        onChange={(e) => setResiduoForm((p) => ({ ...p, corriente: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        placeholder="Descripción"
+                        value={residuoForm.descripcion}
+                        onChange={(e) => setResiduoForm((p) => ({ ...p, descripcion: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        placeholder="Estado de la materia"
+                        value={residuoForm.estadoMateria}
+                        onChange={(e) => setResiduoForm((p) => ({ ...p, estadoMateria: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <select
+                        value={residuoForm.unidad}
+                        onChange={(e) => setResiduoForm((p) => ({ ...p, unidad: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      >
+                        {RESIDUOS_UNIDAD_OPTIONS.map((unidad) => (
+                          <option key={`res-form-unidad-${unidad}`} value={unidad}>{unidad}</option>
+                        ))}
+                      </select>
+                      <input
+                        placeholder="Manejo"
+                        value={residuoForm.manejo}
+                        onChange={(e) => setResiduoForm((p) => ({ ...p, manejo: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Cantidad"
+                        value={residuoForm.cantidad}
+                        onChange={(e) => setResiduoForm((p) => ({ ...p, cantidad: e.target.value }))}
+                        className="border border-[#d6dce5] rounded-soft px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleResiduoFormSubmit}
+                        className="px-4 py-2 rounded-soft text-xs font-semibold bg-[#00502c] text-white hover:bg-[#006b3d] transition-colors"
+                      >
+                        {editingResiduoId ? 'Actualizar' : 'Registrar'}
+                      </button>
+                      {editingResiduoId && (
+                        <button
+                          onClick={resetResiduoForm}
+                          className="px-4 py-2 rounded-soft text-xs font-semibold border border-[#d6dce5] text-gray-600 hover:bg-gray-100 transition-colors"
+                        >
+                          Cancelar edición
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="overflow-x-auto border-t border-[#eaecf0] pt-3">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-gray-500 border-b border-[#eaecf0]">
+                            <th className="px-2 py-2">Año</th>
+                            <th className="px-2 py-2">Mes</th>
+                            <th className="px-2 py-2">Gestor</th>
+                            <th className="px-2 py-2">Residuo</th>
+                            <th className="px-2 py-2">Manejo</th>
+                            <th className="px-2 py-2 text-right">Cantidad</th>
+                            <th className="px-2 py-2">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {residuosFilteredRecords.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="px-2 py-6 text-center text-gray-400">
+                                No hay registros con el filtro actual.
+                              </td>
+                            </tr>
+                          ) : (
+                            residuosFilteredRecords.map((row) => (
+                              <tr key={row.id} className="border-b border-[#f1f3f6] hover:bg-gray-50">
+                                <td className="px-2 py-2">{row.year}</td>
+                                <td className="px-2 py-2 capitalize">{RESIDUOS_MONTH_NAMES[row.month - 1]}</td>
+                                <td className="px-2 py-2">{row.gestor || '—'}</td>
+                                <td className="px-2 py-2">{row.residuo}</td>
+                                <td className="px-2 py-2">{row.manejo || '—'}</td>
+                                <td className="px-2 py-2 text-right">
+                                  {Math.round(row.cantidad).toLocaleString('es-CO')} {row.unidad.toLowerCase()}
+                                </td>
+                                <td className="px-2 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => handleEditResiduoRecord(row)}
+                                      className="text-[#006b3d] hover:underline"
+                                    >
+                                      Editar
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteResiduoRecord(row)}
+                                      className="text-[#93000a] hover:underline"
+                                    >
+                                      Borrar
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {residuosTab === 'detalle' && (
+                  <div className="space-y-5">
+                    <div className="overflow-x-auto">
+                      <p className="text-xs font-bold text-[#00502c] uppercase tracking-wide mb-2">
+                        Residuos generados por tipo (kg)
+                      </p>
+                      {(() => {
+                        const kiloStats = residuosByTipoStats.filter((row) => row.unidad === 'KILOS');
+                        if (kiloStats.length === 0) {
+                          return <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>;
+                        }
+                        const maxCantidad = Math.max(...kiloStats.map((row) => row.cantidad), 1);
+                        return (
+                          <div className="flex items-end gap-2 min-w-max px-1 py-2">
+                            {kiloStats.map((row) => {
+                              const barHeight = getScaledBarHeight(row.cantidad, maxCantidad);
+                              return (
+                                <div key={row.residuo} className="w-[86px] flex flex-col items-center shrink-0">
+                                  <span className="text-[10px] font-mono font-semibold text-[#00502c] mb-1 whitespace-nowrap">
+                                    {Math.round(row.cantidad)}
+                                  </span>
+                                  <div className="h-40 w-full flex items-end justify-center">
+                                    <div
+                                      className="w-[32px] rounded-t-sm shrink-0"
+                                      style={{
+                                        height: `${barHeight}%`,
+                                        minHeight: barHeight <= 0 ? '2px' : '6px',
+                                        backgroundColor: '#00502c'
+                                      }}
+                                      title={`${row.residuo}: ${Math.round(row.cantidad).toLocaleString('es-CO')} kg`}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-gray-500 text-center mt-1.5 leading-tight break-words">
+                                    {row.residuo}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-gray-500 border-b border-[#eaecf0]">
+                            <th className="px-2 py-2">Residuo</th>
+                            <th className="px-2 py-2 text-right">Cantidad</th>
+                            <th className="px-2 py-2 text-right">Aprovechado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {residuosByTipoStats.filter((row) => row.unidad === 'KILOS').length === 0 ? (
+                            <tr>
+                              <td colSpan={3} className="px-2 py-6 text-center text-gray-400">
+                                No hay datos con el filtro actual.
+                              </td>
+                            </tr>
+                          ) : (
+                            <>
+                              {residuosByTipoStats
+                                .filter((row) => row.unidad === 'KILOS')
+                                .map((row) => (
+                                  <tr key={row.residuo} className="border-b border-[#f1f3f6] hover:bg-gray-50">
+                                    <td className="px-2 py-2">{row.residuo}</td>
+                                    <td className="px-2 py-2 text-right">{Math.round(row.cantidad).toLocaleString('es-CO')} kg</td>
+                                    <td className="px-2 py-2 text-right">
+                                      {row.cantidad > 0 ? `${((row.aprovechado / row.cantidad) * 100).toFixed(1)}%` : '—'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              <tr className="font-semibold text-[#00502c]">
+                                <td className="px-2 py-2">Total</td>
+                                <td className="px-2 py-2 text-right">{Math.round(residuosKpis.totalKg).toLocaleString('es-CO')} kg</td>
+                                <td className="px-2 py-2 text-right">{residuosKpis.pctAprovechado.toFixed(1)}%</td>
+                              </tr>
+                            </>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {residuosTab === 'tipo' && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-gray-500 border-b border-[#eaecf0]">
+                          <th className="px-2 py-2">Residuo</th>
+                          <th className="px-2 py-2">Unidad</th>
+                          <th className="px-2 py-2 text-right">Cantidad</th>
+                          <th className="px-2 py-2 text-right">Aprovechado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {residuosByTipoStats.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="px-2 py-6 text-center text-gray-400">
+                              No hay datos con el filtro actual.
+                            </td>
+                          </tr>
+                        ) : (
+                          residuosByTipoStats.map((row) => (
+                            <tr key={`${row.residuo}-${row.unidad}`} className="border-b border-[#f1f3f6] hover:bg-gray-50">
+                              <td className="px-2 py-2">{row.residuo}</td>
+                              <td className="px-2 py-2">{row.unidad}</td>
+                              <td className="px-2 py-2 text-right">{Math.round(row.cantidad).toLocaleString('es-CO')}</td>
+                              <td className="px-2 py-2 text-right">
+                                {row.unidad === 'KILOS' && row.cantidad > 0
+                                  ? `${((row.aprovechado / row.cantidad) * 100).toFixed(1)}%`
+                                  : '—'}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {residuosTab === 'manejo' && (
+                  <div className="space-y-5">
+                    <div className="overflow-x-auto">
+                      <p className="text-xs font-bold text-[#a15c00] uppercase tracking-wide mb-2">
+                        Residuos por tipo de manejo (kg)
+                      </p>
+                      {residuosByManejoStats.length === 0 ? (
+                        <p className="text-sm text-gray-400 text-center py-6">No hay datos con el filtro actual.</p>
+                      ) : (
+                        <div className="flex items-end gap-2 min-w-max px-1 py-2">
+                          {(() => {
+                            const maxKg = Math.max(...residuosByManejoStats.map((row) => row.cantidadKg), 1);
+                            return residuosByManejoStats.map((row) => {
+                              const barHeight = getScaledBarHeight(row.cantidadKg, maxKg);
+                              return (
+                                <div key={row.manejo} className="w-[92px] flex flex-col items-center shrink-0">
+                                  <span className="text-[10px] font-mono font-semibold text-[#a15c00] mb-1 whitespace-nowrap">
+                                    {Math.round(row.cantidadKg)}
+                                  </span>
+                                  <div className="h-40 w-full flex items-end justify-center">
+                                    <div
+                                      className="w-[32px] rounded-t-sm shrink-0"
+                                      style={{
+                                        height: `${barHeight}%`,
+                                        minHeight: barHeight <= 0 ? '2px' : '6px',
+                                        backgroundColor: '#ffb300'
+                                      }}
+                                      title={`${row.manejo}: ${Math.round(row.cantidadKg).toLocaleString('es-CO')} kg`}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-gray-500 text-center mt-1.5 leading-tight break-words">
+                                    {row.manejo}
+                                  </span>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-gray-500 border-b border-[#eaecf0]">
+                            <th className="px-2 py-2">Manejo</th>
+                            <th className="px-2 py-2 text-right">Cantidad (kg)</th>
+                            <th className="px-2 py-2 text-right">% del total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {residuosByManejoStats.length === 0 ? (
+                            <tr>
+                              <td colSpan={3} className="px-2 py-6 text-center text-gray-400">
+                                No hay datos con el filtro actual.
+                              </td>
+                            </tr>
+                          ) : (
+                            residuosByManejoStats.map((row) => (
+                              <tr key={row.manejo} className="border-b border-[#f1f3f6] hover:bg-gray-50">
+                                <td className="px-2 py-2">{row.manejo}</td>
+                                <td className="px-2 py-2 text-right">{Math.round(row.cantidadKg).toLocaleString('es-CO')}</td>
+                                <td className="px-2 py-2 text-right">
+                                  {residuosKpis.totalKg > 0
+                                    ? `${((row.cantidadKg / residuosKpis.totalKg) * 100).toFixed(1)}%`
+                                    : '—'}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </div>

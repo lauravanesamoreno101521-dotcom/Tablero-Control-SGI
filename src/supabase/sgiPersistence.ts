@@ -9,6 +9,8 @@ export const SGI_DATASET_KEYS = {
   medicinaTrabajo: 'medicina_trabajo_bd',
   publicServices: 'public_services_bd',
   publicServiceIndicators: 'public_service_indicators_bd',
+  co2Kilometraje: 'co2_kilometraje_bd',
+  residuosMantenimiento: 'residuos_mantenimiento_bd',
   incapInformeEdits: 'incap_informe_edits',
   formacionInformeEdits: 'formacion_informe_edits'
 } as const;
@@ -24,6 +26,8 @@ export type SgiPersistedDatasets = {
   medicinaTrabajo: unknown[];
   publicServices: unknown[];
   publicServiceIndicators: unknown[];
+  co2Kilometraje: unknown[];
+  residuosMantenimiento: unknown[];
   incapInformeEdits: Record<string, unknown>;
   formacionInformeEdits: Record<string, unknown>;
 };
@@ -123,6 +127,8 @@ export async function loadSgiDatasetsFromSupabase(
     medicinaTrabajoRaw,
     publicServicesRaw,
     publicServiceIndicatorsRaw,
+    co2KilometrajeRaw,
+    residuosMantenimientoRaw,
     incapInformeEditsRaw,
     formacionInformeEditsRaw
   ] = await Promise.all([
@@ -134,6 +140,8 @@ export async function loadSgiDatasetsFromSupabase(
     loadDataset(SGI_DATASET_KEYS.medicinaTrabajo),
     loadDataset(SGI_DATASET_KEYS.publicServices),
     loadDataset(SGI_DATASET_KEYS.publicServiceIndicators),
+    loadDataset(SGI_DATASET_KEYS.co2Kilometraje),
+    loadDataset(SGI_DATASET_KEYS.residuosMantenimiento),
     loadDataset(SGI_DATASET_KEYS.incapInformeEdits),
     loadDataset(SGI_DATASET_KEYS.formacionInformeEdits)
   ]);
@@ -162,6 +170,12 @@ export async function loadSgiDatasetsFromSupabase(
   const publicServiceIndicators = hasArrayData(publicServiceIndicatorsRaw)
     ? (reviveDates(publicServiceIndicatorsRaw) as unknown[])
     : baselines.publicServiceIndicators;
+  const co2Kilometraje = hasArrayData(co2KilometrajeRaw)
+    ? (reviveDates(co2KilometrajeRaw) as unknown[])
+    : baselines.co2Kilometraje;
+  const residuosMantenimiento = hasArrayData(residuosMantenimientoRaw)
+    ? (reviveDates(residuosMantenimientoRaw) as unknown[])
+    : baselines.residuosMantenimiento;
   const incapInformeEdits = hasObjectData(incapInformeEditsRaw)
     ? (incapInformeEditsRaw as Record<string, unknown>)
     : baselines.incapInformeEdits;
@@ -178,6 +192,8 @@ export async function loadSgiDatasetsFromSupabase(
     medicinaTrabajo,
     publicServices,
     publicServiceIndicators,
+    co2Kilometraje,
+    residuosMantenimiento,
     incapInformeEdits,
     formacionInformeEdits
   };
@@ -191,6 +207,8 @@ export async function loadSgiDatasetsFromSupabase(
   if (!hasArrayData(medicinaTrabajoRaw)) seedPayload.medicinaTrabajo = baselines.medicinaTrabajo;
   if (!hasArrayData(publicServicesRaw)) seedPayload.publicServices = baselines.publicServices;
   if (!hasArrayData(publicServiceIndicatorsRaw)) seedPayload.publicServiceIndicators = baselines.publicServiceIndicators;
+  if (!hasArrayData(co2KilometrajeRaw)) seedPayload.co2Kilometraje = baselines.co2Kilometraje;
+  if (!hasArrayData(residuosMantenimientoRaw)) seedPayload.residuosMantenimiento = baselines.residuosMantenimiento;
   if (!hasObjectData(incapInformeEditsRaw)) seedPayload.incapInformeEdits = baselines.incapInformeEdits;
   if (!hasObjectData(formacionInformeEditsRaw)) seedPayload.formacionInformeEdits = baselines.formacionInformeEdits;
 
@@ -205,6 +223,8 @@ export async function loadSgiDatasetsFromSupabase(
         medicinaTrabajo: seedPayload.medicinaTrabajo ?? loaded.medicinaTrabajo,
         publicServices: seedPayload.publicServices ?? loaded.publicServices,
         publicServiceIndicators: seedPayload.publicServiceIndicators ?? loaded.publicServiceIndicators,
+        co2Kilometraje: seedPayload.co2Kilometraje ?? loaded.co2Kilometraje,
+        residuosMantenimiento: seedPayload.residuosMantenimiento ?? loaded.residuosMantenimiento,
         incapInformeEdits: seedPayload.incapInformeEdits ?? loaded.incapInformeEdits,
         formacionInformeEdits: seedPayload.formacionInformeEdits ?? loaded.formacionInformeEdits
       },
@@ -230,6 +250,8 @@ export async function persistSgiDatasetsToSupabase(
     saveDataset(SGI_DATASET_KEYS.medicinaTrabajo, datasets.medicinaTrabajo, updatedByEmail),
     saveDataset(SGI_DATASET_KEYS.publicServices, datasets.publicServices, updatedByEmail),
     saveDataset(SGI_DATASET_KEYS.publicServiceIndicators, datasets.publicServiceIndicators, updatedByEmail),
+    saveDataset(SGI_DATASET_KEYS.co2Kilometraje, datasets.co2Kilometraje, updatedByEmail),
+    saveDataset(SGI_DATASET_KEYS.residuosMantenimiento, datasets.residuosMantenimiento, updatedByEmail),
     saveDataset(SGI_DATASET_KEYS.incapInformeEdits, datasets.incapInformeEdits, updatedByEmail),
     saveDataset(SGI_DATASET_KEYS.formacionInformeEdits, datasets.formacionInformeEdits, updatedByEmail)
   ]);
