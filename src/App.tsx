@@ -2341,13 +2341,20 @@ export default function App() {
 
   // Vista de "Ingreso base de datos": del más reciente ingresado al más antiguo (por fecha, y si
   // no hay fecha, por año/mes), para que lo último cargado sea lo primero que se vea.
+  // Al escribir una cédula en el formulario de "Ingreso base de datos" se filtra en vivo (parcial)
+  // la tabla a las capacitaciones de esa persona, respetando el año/rango de fechas ya
+  // aplicado (ej. filtrar enero-abril y luego escribir la cédula muestra solo esos meses).
   const formacionEntryTableRecords = useMemo(() => {
+    const cedulaQuery = formacionForm.cedula.trim();
+    const base = cedulaQuery
+      ? formacionFilteredRecords.filter((row) => row.cedula.includes(cedulaQuery))
+      : formacionFilteredRecords;
     const toTime = (row: FormacionRecord) => {
       if (row.date) return row.date.getTime();
       return new Date(row.year, (row.month || 1) - 1, 1).getTime();
     };
-    return [...formacionFilteredRecords].sort((a, b) => toTime(b) - toTime(a));
-  }, [formacionFilteredRecords]);
+    return [...base].sort((a, b) => toTime(b) - toTime(a));
+  }, [formacionFilteredRecords, formacionForm.cedula]);
 
   const formacionEntryTotalPages = Math.max(
     1,
@@ -2356,7 +2363,7 @@ export default function App() {
 
   useEffect(() => {
     setFormacionEntryPage(1);
-  }, [formacionYearFilter, sgiStartDate, sgiEndDate]);
+  }, [formacionYearFilter, sgiStartDate, sgiEndDate, formacionForm.cedula]);
 
   useEffect(() => {
     setFormacionEntryPage((prev) => Math.min(prev, formacionEntryTotalPages));
