@@ -67,6 +67,7 @@ import {
   parseUnknownDate
 } from './incapDateUtils.ts';
 import { getScaledBarHeight, renderSgiGroupedVerticalBars, renderSgiVerticalBar } from './sgiBarChart.tsx';
+import { SgiPagination, SGI_PAGE_SIZE } from './SgiPagination.tsx';
 import formacionBdRaw from './formacionBdData.json';
 import formacionInformeRaw from './formacionInformeData.json';
 import {
@@ -1090,6 +1091,7 @@ export default function App() {
   const [showPublicServicesEntry, setShowPublicServicesEntry] = useState(false);
   const [publicServicesEntryPanel, setPublicServicesEntryPanel] = useState<'sede' | 'indicadores'>('sede');
   const [editingPublicServiceId, setEditingPublicServiceId] = useState<string | null>(null);
+  const [publicServicesEntryPage, setPublicServicesEntryPage] = useState(1);
   const [publicServiceForm, setPublicServiceForm] = useState({
     year: String(new Date().getFullYear()),
     month: '',
@@ -1123,6 +1125,7 @@ export default function App() {
   const [co2FuelFilter, setCo2FuelFilter] = useState('');
   const [showCo2Entry, setShowCo2Entry] = useState(false);
   const [editingCo2Id, setEditingCo2Id] = useState<string | null>(null);
+  const [co2EntryPage, setCo2EntryPage] = useState(1);
   const [co2Form, setCo2Form] = useState({
     year: String(new Date().getFullYear()),
     month: '',
@@ -1144,6 +1147,7 @@ export default function App() {
   const [residuosGestorFilter, setResiduosGestorFilter] = useState('');
   const [showResiduosEntry, setShowResiduosEntry] = useState(false);
   const [editingResiduoId, setEditingResiduoId] = useState<string | null>(null);
+  const [residuosEntryPage, setResiduosEntryPage] = useState(1);
   const [residuoForm, setResiduoForm] = useState({
     year: String(new Date().getFullYear()),
     month: '',
@@ -1176,6 +1180,7 @@ export default function App() {
   const [showDbDetailPanel, setShowDbDetailPanel] = useState(false);
   const [isDemoExcelLoading, setIsDemoExcelLoading] = useState(false);
   const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
+  const [sstEntryPage, setSstEntryPage] = useState(1);
   const [dbForm, setDbForm] = useState<SstVisitForm>({
     client: '',
     city: '',
@@ -1190,6 +1195,7 @@ export default function App() {
     topics: ''
   });
   const [editingUnsafeId, setEditingUnsafeId] = useState<string | null>(null);
+  const [unsafeEntryPage, setUnsafeEntryPage] = useState(1);
   const [unsafeForm, setUnsafeForm] = useState<UnsafeBehaviorForm>({
     cedula: '',
     date: '',
@@ -1216,6 +1222,7 @@ export default function App() {
     observations: ''
   });
   const [editingIncapId, setEditingIncapId] = useState<string | null>(null);
+  const [incapEntryPage, setIncapEntryPage] = useState(1);
   const [incapDemoPanel, setIncapDemoPanel] = useState<'bd' | 'informe'>('bd');
   const [incapDemoInformeEdits, setIncapDemoInformeEdits] = useState<
     Record<number, Partial<IncapInformeMonthlyInputs & IncapInformeManualBdEdits>>
@@ -1226,6 +1233,7 @@ export default function App() {
     Record<number, Partial<FormacionInformeMonthlyInputs>>
   >({});
   const [editingFormacionId, setEditingFormacionId] = useState<string | null>(null);
+  const [formacionEntryPage, setFormacionEntryPage] = useState(1);
   const [formacionForm, setFormacionForm] = useState<FormacionForm>({
     cedula: '',
     score: '',
@@ -1239,6 +1247,7 @@ export default function App() {
     trainingHours: ''
   });
   const [editingAccidentalidadId, setEditingAccidentalidadId] = useState<string | null>(null);
+  const [accidentalidadEntryPage, setAccidentalidadEntryPage] = useState(1);
   const [accidentalidadForm, setAccidentalidadForm] = useState<AccidentalidadForm>({
     eventDate: '',
     reportDate: '',
@@ -1261,6 +1270,7 @@ export default function App() {
     riskDescription: ''
   });
   const [editingMedicinaId, setEditingMedicinaId] = useState<string | null>(null);
+  const [medicinaEntryPage, setMedicinaEntryPage] = useState(1);
   const [medicinaForm, setMedicinaForm] = useState<MedicinaTrabajoForm>({
     documento: '',
     employeeName: '',
@@ -1422,6 +1432,27 @@ export default function App() {
       return true;
     });
   }, [sstVisits, sgiStartDate, sgiEndDate]);
+
+  // Vista de "Ingreso base de datos": del más reciente ingresado al más antiguo.
+  const sstEntryTableRecords = useMemo(() => {
+    const toTime = (visit: SstVisitRecord) => (visit.date ? visit.date.getTime() : 0);
+    return [...sstVisits].sort((a, b) => toTime(b) - toTime(a));
+  }, [sstVisits]);
+
+  const sstEntryTotalPages = Math.max(1, Math.ceil(sstEntryTableRecords.length / SGI_PAGE_SIZE));
+
+  useEffect(() => {
+    setSstEntryPage(1);
+  }, [sgiStartDate, sgiEndDate]);
+
+  useEffect(() => {
+    setSstEntryPage((prev) => Math.min(prev, sstEntryTotalPages));
+  }, [sstEntryTotalPages]);
+
+  const sstEntryPageRecords = useMemo(() => {
+    const start = (sstEntryPage - 1) * SGI_PAGE_SIZE;
+    return sstEntryTableRecords.slice(start, start + SGI_PAGE_SIZE);
+  }, [sstEntryTableRecords, sstEntryPage]);
 
   const initialUnsafeBehaviorRecords = useMemo(() => {
     return (Array.isArray(comportamientosInsegurosRaw) ? comportamientosInsegurosRaw : [])
@@ -1892,6 +1923,27 @@ export default function App() {
     });
   }, [unsafeBehaviorRecords, sgiStartDate, sgiEndDate, unsafeYearFilter]);
 
+  // Vista de "Ingreso base de datos": del más reciente ingresado al más antiguo.
+  const unsafeEntryTableRecords = useMemo(() => {
+    const toTime = (row: UnsafeBehaviorRecord) => (row.date ? row.date.getTime() : 0);
+    return [...unsafeFilteredRecords].sort((a, b) => toTime(b) - toTime(a));
+  }, [unsafeFilteredRecords]);
+
+  const unsafeEntryTotalPages = Math.max(1, Math.ceil(unsafeEntryTableRecords.length / SGI_PAGE_SIZE));
+
+  useEffect(() => {
+    setUnsafeEntryPage(1);
+  }, [unsafeYearFilter, sgiStartDate, sgiEndDate]);
+
+  useEffect(() => {
+    setUnsafeEntryPage((prev) => Math.min(prev, unsafeEntryTotalPages));
+  }, [unsafeEntryTotalPages]);
+
+  const unsafeEntryPageRecords = useMemo(() => {
+    const start = (unsafeEntryPage - 1) * SGI_PAGE_SIZE;
+    return unsafeEntryTableRecords.slice(start, start + SGI_PAGE_SIZE);
+  }, [unsafeEntryTableRecords, unsafeEntryPage]);
+
   const unsafeYearOptions = useMemo(() => {
     return Array.from(
       new Set(
@@ -1926,6 +1978,27 @@ export default function App() {
       return true;
     });
   }, [incapRecords, incapYearFilter, sgiStartDate, sgiEndDate]);
+
+  // Vista de "Ingreso base de datos": del más reciente ingresado al más antiguo.
+  const incapEntryTableRecords = useMemo(() => {
+    const toTime = (row: IncapRecord) => (row.incapDate ? row.incapDate.getTime() : 0);
+    return [...incapFilteredRecords].sort((a, b) => toTime(b) - toTime(a));
+  }, [incapFilteredRecords]);
+
+  const incapEntryTotalPages = Math.max(1, Math.ceil(incapEntryTableRecords.length / SGI_PAGE_SIZE));
+
+  useEffect(() => {
+    setIncapEntryPage(1);
+  }, [incapYearFilter, sgiStartDate, sgiEndDate]);
+
+  useEffect(() => {
+    setIncapEntryPage((prev) => Math.min(prev, incapEntryTotalPages));
+  }, [incapEntryTotalPages]);
+
+  const incapEntryPageRecords = useMemo(() => {
+    const start = (incapEntryPage - 1) * SGI_PAGE_SIZE;
+    return incapEntryTableRecords.slice(start, start + SGI_PAGE_SIZE);
+  }, [incapEntryTableRecords, incapEntryPage]);
 
   const incapDemoInformeInputs = useMemo((): IncapInformeMonthlyInputs | null => {
     if (!incapInformeYear) return null;
@@ -2266,6 +2339,34 @@ export default function App() {
     });
   }, [formacionRecords, formacionYearFilter, sgiStartDate, sgiEndDate]);
 
+  // Vista de "Ingreso base de datos": del más reciente ingresado al más antiguo (por fecha, y si
+  // no hay fecha, por año/mes), para que lo último cargado sea lo primero que se vea.
+  const formacionEntryTableRecords = useMemo(() => {
+    const toTime = (row: FormacionRecord) => {
+      if (row.date) return row.date.getTime();
+      return new Date(row.year, (row.month || 1) - 1, 1).getTime();
+    };
+    return [...formacionFilteredRecords].sort((a, b) => toTime(b) - toTime(a));
+  }, [formacionFilteredRecords]);
+
+  const formacionEntryTotalPages = Math.max(
+    1,
+    Math.ceil(formacionEntryTableRecords.length / SGI_PAGE_SIZE)
+  );
+
+  useEffect(() => {
+    setFormacionEntryPage(1);
+  }, [formacionYearFilter, sgiStartDate, sgiEndDate]);
+
+  useEffect(() => {
+    setFormacionEntryPage((prev) => Math.min(prev, formacionEntryTotalPages));
+  }, [formacionEntryTotalPages]);
+
+  const formacionEntryPageRecords = useMemo(() => {
+    const start = (formacionEntryPage - 1) * SGI_PAGE_SIZE;
+    return formacionEntryTableRecords.slice(start, start + SGI_PAGE_SIZE);
+  }, [formacionEntryTableRecords, formacionEntryPage]);
+
   const formacionDemoInformeInputs = useMemo((): FormacionInformeMonthlyInputs | null => {
     if (!formacionInformeYear) return null;
     const base = parseFormacionInformeInputsFromRows(getFormacionInformeRows(formacionInformeYear));
@@ -2490,6 +2591,30 @@ export default function App() {
     });
   }, [accidentalidadFilteredRecords, accidentalidadForm]);
 
+  // Vista de "Ingreso base de datos": del más reciente ingresado al más antiguo.
+  const accidentalidadEntryTableRecords = useMemo(
+    () => [...accidentalidadDbDisplayRecords].sort((a, b) => (b.eventDate || '').localeCompare(a.eventDate || '')),
+    [accidentalidadDbDisplayRecords]
+  );
+
+  const accidentalidadEntryTotalPages = Math.max(
+    1,
+    Math.ceil(accidentalidadEntryTableRecords.length / SGI_PAGE_SIZE)
+  );
+
+  useEffect(() => {
+    setAccidentalidadEntryPage(1);
+  }, [accidentalidadYearFilter, sgiStartDate, sgiEndDate]);
+
+  useEffect(() => {
+    setAccidentalidadEntryPage((prev) => Math.min(prev, accidentalidadEntryTotalPages));
+  }, [accidentalidadEntryTotalPages]);
+
+  const accidentalidadEntryPageRecords = useMemo(() => {
+    const start = (accidentalidadEntryPage - 1) * SGI_PAGE_SIZE;
+    return accidentalidadEntryTableRecords.slice(start, start + SGI_PAGE_SIZE);
+  }, [accidentalidadEntryTableRecords, accidentalidadEntryPage]);
+
   const accidentalidadIndicators = useMemo(() => {
     const year = accidentalidadInformeYear ?? ACCIDENTALIDAD_INFORME_YEARS[0] ?? 2026;
     const rows = getAccidentalidadInformeRows(accidentalidadInformeByYear, year);
@@ -2680,6 +2805,33 @@ export default function App() {
     publicServicesSedeFilter
   ]);
 
+  // Vista de "Ingreso base de datos": del más reciente ingresado al más antiguo.
+  const publicServicesEntryTableRecords = useMemo(
+    () =>
+      [...publicServicesFilteredRecords].sort(
+        (a, b) => b.year - a.year || b.month - a.month
+      ),
+    [publicServicesFilteredRecords]
+  );
+
+  const publicServicesEntryTotalPages = Math.max(
+    1,
+    Math.ceil(publicServicesEntryTableRecords.length / SGI_PAGE_SIZE)
+  );
+
+  useEffect(() => {
+    setPublicServicesEntryPage(1);
+  }, [publicServicesYearFilter, publicServicesMonthFilter, publicServicesMonthFromFilter, publicServicesMonthToFilter, publicServicesSedeFilter]);
+
+  useEffect(() => {
+    setPublicServicesEntryPage((prev) => Math.min(prev, publicServicesEntryTotalPages));
+  }, [publicServicesEntryTotalPages]);
+
+  const publicServicesEntryPageRecords = useMemo(() => {
+    const start = (publicServicesEntryPage - 1) * SGI_PAGE_SIZE;
+    return publicServicesEntryTableRecords.slice(start, start + SGI_PAGE_SIZE);
+  }, [publicServicesEntryTableRecords, publicServicesEntryPage]);
+
   const publicServiceIndicatorByMonth = useMemo(() => {
     const map = new Map<string, PublicServiceIndicatorRecord>();
     publicServiceIndicatorRecords.forEach((row) => {
@@ -2799,6 +2951,27 @@ export default function App() {
     co2FuelFilter
   ]);
 
+  // Vista de "Ingreso base de datos": del más reciente ingresado al más antiguo.
+  const co2EntryTableRecords = useMemo(
+    () => [...co2FilteredRecords].sort((a, b) => b.year - a.year || b.month - a.month),
+    [co2FilteredRecords]
+  );
+
+  const co2EntryTotalPages = Math.max(1, Math.ceil(co2EntryTableRecords.length / SGI_PAGE_SIZE));
+
+  useEffect(() => {
+    setCo2EntryPage(1);
+  }, [co2YearFilter, co2MonthFilter, co2MonthFromFilter, co2MonthToFilter, co2PlacaFilter, co2FuelFilter]);
+
+  useEffect(() => {
+    setCo2EntryPage((prev) => Math.min(prev, co2EntryTotalPages));
+  }, [co2EntryTotalPages]);
+
+  const co2EntryPageRecords = useMemo(() => {
+    const start = (co2EntryPage - 1) * SGI_PAGE_SIZE;
+    return co2EntryTableRecords.slice(start, start + SGI_PAGE_SIZE);
+  }, [co2EntryTableRecords, co2EntryPage]);
+
   const co2Kpis = useMemo(() => {
     const totalKm = co2FilteredRecords.reduce((sum, row) => sum + row.kilometraje, 0);
     const totalLitros = co2FilteredRecords.reduce((sum, row) => sum + row.litros, 0);
@@ -2912,6 +3085,28 @@ export default function App() {
   // Los indicadores (kg totales, % aprovechado, tipo más generado) se calculan solo sobre los
   // registros en KILOS, que es la unidad predominante y comparable entre residuos. Galones
   // (aceites) y Unidades (llantas) se muestran aparte para no mezclar unidades distintas.
+
+  // Vista de "Ingreso base de datos": del más reciente ingresado al más antiguo.
+  const residuosEntryTableRecords = useMemo(
+    () => [...residuosFilteredRecords].sort((a, b) => b.year - a.year || b.month - a.month),
+    [residuosFilteredRecords]
+  );
+
+  const residuosEntryTotalPages = Math.max(1, Math.ceil(residuosEntryTableRecords.length / SGI_PAGE_SIZE));
+
+  useEffect(() => {
+    setResiduosEntryPage(1);
+  }, [residuosYearFilter, residuosMonthFilter, residuosMonthFromFilter, residuosMonthToFilter, residuosTipoFilter, residuosGestorFilter]);
+
+  useEffect(() => {
+    setResiduosEntryPage((prev) => Math.min(prev, residuosEntryTotalPages));
+  }, [residuosEntryTotalPages]);
+
+  const residuosEntryPageRecords = useMemo(() => {
+    const start = (residuosEntryPage - 1) * SGI_PAGE_SIZE;
+    return residuosEntryTableRecords.slice(start, start + SGI_PAGE_SIZE);
+  }, [residuosEntryTableRecords, residuosEntryPage]);
+
   const residuosKpis = useMemo(() => {
     const kiloRecords = residuosFilteredRecords.filter((row) => row.unidad === 'KILOS');
     const totalKg = kiloRecords.reduce((sum, row) => sum + row.cantidad, 0);
@@ -4223,6 +4418,27 @@ export default function App() {
       return true;
     });
   }, [medicinaTrabajoRecords, medicinaForm.documento, medicinaForm.employeeName]);
+
+  // Vista de "Ingreso base de datos": del más reciente ingresado al más antiguo.
+  const medicinaEntryTableRecords = useMemo(
+    () => [...medicinaDbSearchFilteredRecords].sort((a, b) => (b.examDate || '').localeCompare(a.examDate || '')),
+    [medicinaDbSearchFilteredRecords]
+  );
+
+  const medicinaEntryTotalPages = Math.max(1, Math.ceil(medicinaEntryTableRecords.length / SGI_PAGE_SIZE));
+
+  useEffect(() => {
+    setMedicinaEntryPage(1);
+  }, [medicinaForm.documento, medicinaForm.employeeName]);
+
+  useEffect(() => {
+    setMedicinaEntryPage((prev) => Math.min(prev, medicinaEntryTotalPages));
+  }, [medicinaEntryTotalPages]);
+
+  const medicinaEntryPageRecords = useMemo(() => {
+    const start = (medicinaEntryPage - 1) * SGI_PAGE_SIZE;
+    return medicinaEntryTableRecords.slice(start, start + SGI_PAGE_SIZE);
+  }, [medicinaEntryTableRecords, medicinaEntryPage]);
 
   const accidentalidadDbFilterOptions = useMemo(() => {
     const uniqueSorted = (values: string[]) =>
@@ -7961,14 +8177,14 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {publicServicesFilteredRecords.length === 0 ? (
+                          {publicServicesEntryPageRecords.length === 0 ? (
                             <tr>
                               <td colSpan={7} className="px-2 py-6 text-center text-gray-400">
                                 No hay registros con el filtro actual.
                               </td>
                             </tr>
                           ) : (
-                            publicServicesFilteredRecords.map((row) => (
+                            publicServicesEntryPageRecords.map((row) => (
                               <tr key={row.id} className="border-b border-[#f1f3f6] hover:bg-gray-50">
                                 <td className="px-2 py-2">{row.year}</td>
                                 <td className="px-2 py-2 capitalize">{PUBLIC_SERVICES_MONTH_NAMES[row.month - 1]}</td>
@@ -8001,6 +8217,14 @@ export default function App() {
                           )}
                         </tbody>
                       </table>
+                      <SgiPagination
+                        page={publicServicesEntryPage}
+                        totalPages={publicServicesEntryTotalPages}
+                        onPageChange={setPublicServicesEntryPage}
+                        startIndex={(publicServicesEntryPage - 1) * SGI_PAGE_SIZE + 1}
+                        endIndex={Math.min(publicServicesEntryPage * SGI_PAGE_SIZE, publicServicesEntryTableRecords.length)}
+                        total={publicServicesEntryTableRecords.length}
+                      />
                     </div>
                     </>
                     )}
@@ -8685,14 +8909,14 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {co2FilteredRecords.length === 0 ? (
+                          {co2EntryPageRecords.length === 0 ? (
                             <tr>
                               <td colSpan={8} className="px-2 py-6 text-center text-gray-400">
                                 No hay registros con el filtro actual.
                               </td>
                             </tr>
                           ) : (
-                            co2FilteredRecords.map((row) => (
+                            co2EntryPageRecords.map((row) => (
                               <tr key={row.id} className="border-b border-[#f1f3f6] hover:bg-gray-50">
                                 <td className="px-2 py-2">{row.year}</td>
                                 <td className="px-2 py-2 capitalize">{CO2_MONTH_NAMES[row.month - 1]}</td>
@@ -8724,6 +8948,14 @@ export default function App() {
                           )}
                         </tbody>
                       </table>
+                      <SgiPagination
+                        page={co2EntryPage}
+                        totalPages={co2EntryTotalPages}
+                        onPageChange={setCo2EntryPage}
+                        startIndex={(co2EntryPage - 1) * SGI_PAGE_SIZE + 1}
+                        endIndex={Math.min(co2EntryPage * SGI_PAGE_SIZE, co2EntryTableRecords.length)}
+                        total={co2EntryTableRecords.length}
+                      />
                     </div>
                   </div>
                 )}
@@ -9276,14 +9508,14 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {residuosFilteredRecords.length === 0 ? (
+                          {residuosEntryPageRecords.length === 0 ? (
                             <tr>
                               <td colSpan={7} className="px-2 py-6 text-center text-gray-400">
                                 No hay registros con el filtro actual.
                               </td>
                             </tr>
                           ) : (
-                            residuosFilteredRecords.map((row) => (
+                            residuosEntryPageRecords.map((row) => (
                               <tr key={row.id} className="border-b border-[#f1f3f6] hover:bg-gray-50">
                                 <td className="px-2 py-2">{row.year}</td>
                                 <td className="px-2 py-2 capitalize">{RESIDUOS_MONTH_NAMES[row.month - 1]}</td>
@@ -9314,6 +9546,14 @@ export default function App() {
                           )}
                         </tbody>
                       </table>
+                      <SgiPagination
+                        page={residuosEntryPage}
+                        totalPages={residuosEntryTotalPages}
+                        onPageChange={setResiduosEntryPage}
+                        startIndex={(residuosEntryPage - 1) * SGI_PAGE_SIZE + 1}
+                        endIndex={Math.min(residuosEntryPage * SGI_PAGE_SIZE, residuosEntryTableRecords.length)}
+                        total={residuosEntryTableRecords.length}
+                      />
                     </div>
                   </div>
                 )}
@@ -11441,7 +11681,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#eef1f5]">
-                        {sstVisits.map((visit) => (
+                        {sstEntryPageRecords.map((visit) => (
                           <tr key={visit.id} className="bg-white">
                             <td className="px-3 py-2">{visit.client}</td>
                             <td className="px-3 py-2">{visit.city}</td>
@@ -11467,6 +11707,14 @@ export default function App() {
                         ))}
                       </tbody>
                     </table>
+                    <SgiPagination
+                      page={sstEntryPage}
+                      totalPages={sstEntryTotalPages}
+                      onPageChange={setSstEntryPage}
+                      startIndex={(sstEntryPage - 1) * SGI_PAGE_SIZE + 1}
+                      endIndex={Math.min(sstEntryPage * SGI_PAGE_SIZE, sstEntryTableRecords.length)}
+                      total={sstEntryTableRecords.length}
+                    />
                     <datalist id="db-client-options">
                       {dbFilterOptions.client.map((option) => <option key={`client-${option}`} value={option} />)}
                     </datalist>
@@ -11768,7 +12016,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#eef1f5]">
-                        {unsafeFilteredRecords.map((row) => (
+                        {unsafeEntryPageRecords.map((row) => (
                           <tr key={`unsafe-db-${row.id}`}>
                             <td className="px-3 py-2">{row.cedula}</td>
                             <td className="px-3 py-2">{row.driverName}</td>
@@ -11806,6 +12054,14 @@ export default function App() {
                         ))}
                       </tbody>
                     </table>
+                    <SgiPagination
+                      page={unsafeEntryPage}
+                      totalPages={unsafeEntryTotalPages}
+                      onPageChange={setUnsafeEntryPage}
+                      startIndex={(unsafeEntryPage - 1) * SGI_PAGE_SIZE + 1}
+                      endIndex={Math.min(unsafeEntryPage * SGI_PAGE_SIZE, unsafeEntryTableRecords.length)}
+                      total={unsafeEntryTableRecords.length}
+                    />
                     <datalist id="unsafe-cedula-options">
                       {unsafeDbFilterOptions.cedula.map((option) => <option key={`unsafe-cedula-${option}`} value={option} />)}
                     </datalist>
@@ -12025,7 +12281,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#eef1f5] bg-white">
-                        {incapFilteredRecords.map((row) => (
+                        {incapEntryPageRecords.map((row) => (
                           <tr key={`incap-db-${row.id}`} className="hover:bg-[#fafbfc]">
                             <td className={INCAP_DB_TD_CLASS} title={row.incapDateLabel}>{row.incapDateLabel}</td>
                             <td className={`${INCAP_DB_TD_CLASS} text-center font-mono`} title={String(row.month)}>{row.month}</td>
@@ -12063,6 +12319,14 @@ export default function App() {
                         ))}
                       </tbody>
                     </table>
+                    <SgiPagination
+                      page={incapEntryPage}
+                      totalPages={incapEntryTotalPages}
+                      onPageChange={setIncapEntryPage}
+                      startIndex={(incapEntryPage - 1) * SGI_PAGE_SIZE + 1}
+                      endIndex={Math.min(incapEntryPage * SGI_PAGE_SIZE, incapEntryTableRecords.length)}
+                      total={incapEntryTableRecords.length}
+                    />
                     <datalist id="incap-month-options">
                       {Array.from({ length: 12 }, (_, index) => (
                         <option key={`incap-month-${index + 1}`} value={String(index + 1)} />
@@ -12279,7 +12543,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#eef1f5]">
-                        {formacionFilteredRecords.slice(0, 250).map((row) => (
+                        {formacionEntryPageRecords.map((row) => (
                           <tr key={row.id}>
                             <td className="px-3 py-2 font-mono">{row.cedula}</td>
                             <td className="px-3 py-2 font-mono">{row.score}</td>
@@ -12300,11 +12564,14 @@ export default function App() {
                         ))}
                       </tbody>
                     </table>
-                    {formacionFilteredRecords.length > 250 && (
-                      <p className="text-[11px] text-gray-500 px-3 py-2 border-t border-[#eaecf0]">
-                        Mostrando 250 de {formacionFilteredRecords.length} registros. Use filtros de año o fechas para acotar la vista.
-                      </p>
-                    )}
+                    <SgiPagination
+                      page={formacionEntryPage}
+                      totalPages={formacionEntryTotalPages}
+                      onPageChange={setFormacionEntryPage}
+                      startIndex={(formacionEntryPage - 1) * SGI_PAGE_SIZE + 1}
+                      endIndex={Math.min(formacionEntryPage * SGI_PAGE_SIZE, formacionEntryTableRecords.length)}
+                      total={formacionEntryTableRecords.length}
+                    />
                     <datalist id="formacion-cedula-options">
                       {formacionDbFilterOptions.cedula.map((option) => <option key={`formacion-cedula-${option}`} value={option} />)}
                     </datalist>
@@ -12474,7 +12741,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#eef1f5]">
-                        {accidentalidadDbDisplayRecords.slice(0, 250).map((row) => (
+                        {accidentalidadEntryPageRecords.map((row) => (
                           <tr key={row.id}>
                             <td className="px-3 py-2">{row.eventDateLabel}</td>
                             <td className="px-3 py-2">{row.reportDateLabel}</td>
@@ -12496,11 +12763,14 @@ export default function App() {
                         ))}
                       </tbody>
                     </table>
-                    {accidentalidadDbDisplayRecords.length > 250 && (
-                      <p className="text-[11px] text-gray-500 px-3 py-2 border-t border-[#eaecf0]">
-                        Mostrando 250 de {accidentalidadDbDisplayRecords.length} registros. Use filtros de año, fechas o columnas para acotar la vista.
-                      </p>
-                    )}
+                    <SgiPagination
+                      page={accidentalidadEntryPage}
+                      totalPages={accidentalidadEntryTotalPages}
+                      onPageChange={setAccidentalidadEntryPage}
+                      startIndex={(accidentalidadEntryPage - 1) * SGI_PAGE_SIZE + 1}
+                      endIndex={Math.min(accidentalidadEntryPage * SGI_PAGE_SIZE, accidentalidadEntryTableRecords.length)}
+                      total={accidentalidadEntryTableRecords.length}
+                    />
                     <datalist id="acc-event-date-options">
                       {accidentalidadDbFilterOptions.eventDate.map((option) => <option key={`acc-event-date-${option}`} value={option} />)}
                     </datalist>
@@ -12666,7 +12936,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#eef1f5]">
-                        {medicinaDbSearchFilteredRecords.slice(0, 120).map((row) => {
+                        {medicinaEntryPageRecords.map((row) => {
                           const expiryStyles = getMedicinaExpiryStylesForRecord(row, medicinaReferenceDate);
                           return (
                             <tr key={row.id} className={expiryStyles.bg}>
@@ -12705,15 +12975,18 @@ export default function App() {
                         })}
                       </tbody>
                     </table>
+                    <SgiPagination
+                      page={medicinaEntryPage}
+                      totalPages={medicinaEntryTotalPages}
+                      onPageChange={setMedicinaEntryPage}
+                      startIndex={(medicinaEntryPage - 1) * SGI_PAGE_SIZE + 1}
+                      endIndex={Math.min(medicinaEntryPage * SGI_PAGE_SIZE, medicinaEntryTableRecords.length)}
+                      total={medicinaEntryTableRecords.length}
+                    />
                   </div>
                   {(medicinaForm.documento.trim() || medicinaForm.employeeName.trim()) && (
                     <p className="text-[11px] text-gray-500 px-3 py-2 border-t border-[#eaecf0]">
                       {medicinaDbSearchFilteredRecords.length} registro(s) coinciden con el filtro de Documento/Nombre.
-                    </p>
-                  )}
-                  {medicinaDbSearchFilteredRecords.length > 120 && (
-                    <p className="text-[11px] text-gray-500 px-3 py-2 border-t border-[#eaecf0]">
-                      Mostrando 120 de {medicinaDbSearchFilteredRecords.length} registros en la vista de edición.
                     </p>
                   )}
                   <datalist id="med-documento-options">

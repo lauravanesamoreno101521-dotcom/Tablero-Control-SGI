@@ -16,6 +16,8 @@ import {
   type AuditoriaInternaRecord
 } from '../auditoriasDemo.ts';
 import { getScaledBarHeight, renderSgiGroupedVerticalBars, renderSgiVerticalBar } from '../sgiBarChart.tsx';
+import { SgiPagination, SGI_PAGE_SIZE } from '../SgiPagination.tsx';
+import { useEffect, useMemo, useState } from 'react';
 
 export type AuditoriaBdPanel = 'interna' | 'externa' | 'informe';
 
@@ -126,6 +128,35 @@ export default function AuditoriasSection({
     ? `el año ${yearFilter}`
     : `el último año registrado (${paretoReferenceYear})`;
 
+  // Vistas de "Ingreso base de datos": del más reciente ingresado al más antiguo.
+  const [internaEntryPage, setInternaEntryPage] = useState(1);
+  const internaEntryTableRecords = useMemo(
+    () => [...internaRecords].sort((a, b) => (b.eventDate || '').localeCompare(a.eventDate || '')),
+    [internaRecords]
+  );
+  const internaEntryTotalPages = Math.max(1, Math.ceil(internaEntryTableRecords.length / SGI_PAGE_SIZE));
+  useEffect(() => {
+    setInternaEntryPage((prev) => Math.min(prev, internaEntryTotalPages));
+  }, [internaEntryTotalPages]);
+  const internaEntryPageRecords = useMemo(() => {
+    const start = (internaEntryPage - 1) * SGI_PAGE_SIZE;
+    return internaEntryTableRecords.slice(start, start + SGI_PAGE_SIZE);
+  }, [internaEntryTableRecords, internaEntryPage]);
+
+  const [externaEntryPage, setExternaEntryPage] = useState(1);
+  const externaEntryTableRecords = useMemo(
+    () => [...externaRecords].sort((a, b) => (b.eventDate || '').localeCompare(a.eventDate || '')),
+    [externaRecords]
+  );
+  const externaEntryTotalPages = Math.max(1, Math.ceil(externaEntryTableRecords.length / SGI_PAGE_SIZE));
+  useEffect(() => {
+    setExternaEntryPage((prev) => Math.min(prev, externaEntryTotalPages));
+  }, [externaEntryTotalPages]);
+  const externaEntryPageRecords = useMemo(() => {
+    const start = (externaEntryPage - 1) * SGI_PAGE_SIZE;
+    return externaEntryTableRecords.slice(start, start + SGI_PAGE_SIZE);
+  }, [externaEntryTableRecords, externaEntryPage]);
+
   if (showDbDetailPanel && demoPanel === 'interna' && canEdit) {
     return (
       <div className="bg-white border border-[#eaecf0] rounded-soft overflow-hidden">
@@ -166,7 +197,7 @@ export default function AuditoriasSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-[#eef1f5]">
-              {internaRecords.map((row) => (
+              {internaEntryPageRecords.map((row) => (
                 <tr key={row.id}>
                   <td className="px-2 py-2 whitespace-nowrap">{row.eventDateLabel || row.eventDate}</td>
                   <td className="px-2 py-2">{row.entity}</td>
@@ -182,6 +213,14 @@ export default function AuditoriasSection({
               ))}
             </tbody>
           </table>
+          <SgiPagination
+            page={internaEntryPage}
+            totalPages={internaEntryTotalPages}
+            onPageChange={setInternaEntryPage}
+            startIndex={(internaEntryPage - 1) * SGI_PAGE_SIZE + 1}
+            endIndex={Math.min(internaEntryPage * SGI_PAGE_SIZE, internaEntryTableRecords.length)}
+            total={internaEntryTableRecords.length}
+          />
         </div>
         <datalist id="aud-int-date-options">{internaFilterOptions.eventDate.map((v) => <option key={`int-date-${v}`} value={v} />)}</datalist>
         <datalist id="aud-int-entity-options">{internaFilterOptions.entity.map((v) => <option key={`int-entity-${v}`} value={v} />)}</datalist>
@@ -229,7 +268,7 @@ export default function AuditoriasSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-[#eef1f5]">
-              {externaRecords.map((row) => (
+              {externaEntryPageRecords.map((row) => (
                 <tr key={row.id}>
                   <td className="px-2 py-2 whitespace-nowrap">{row.eventDateLabel || row.eventDate}</td>
                   <td className="px-2 py-2">{row.entity}</td>
@@ -244,6 +283,14 @@ export default function AuditoriasSection({
               ))}
             </tbody>
           </table>
+          <SgiPagination
+            page={externaEntryPage}
+            totalPages={externaEntryTotalPages}
+            onPageChange={setExternaEntryPage}
+            startIndex={(externaEntryPage - 1) * SGI_PAGE_SIZE + 1}
+            endIndex={Math.min(externaEntryPage * SGI_PAGE_SIZE, externaEntryTableRecords.length)}
+            total={externaEntryTableRecords.length}
+          />
         </div>
         <datalist id="aud-ext-date-options">{externaFilterOptions.eventDate.map((v) => <option key={`ext-date-${v}`} value={v} />)}</datalist>
         <datalist id="aud-ext-entity-options">{externaFilterOptions.entity.map((v) => <option key={`ext-entity-${v}`} value={v} />)}</datalist>
