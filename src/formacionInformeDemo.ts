@@ -97,6 +97,7 @@ export const normalizeFormacionModality = (modality: string): string => {
   if (!raw) return '';
   const normalized = normalizeFormacionText(raw).replace(/\s+/g, '');
   if (normalized === 'ENLINEA') return 'EN LÍNEA';
+  if (normalized === 'PRESENCIAL') return 'PRESENCIAL';
   return raw;
 };
 
