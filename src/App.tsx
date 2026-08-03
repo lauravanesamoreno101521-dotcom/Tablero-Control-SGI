@@ -173,6 +173,7 @@ import {
   computeCo2TreesToOffset,
   normalizeCo2Fuel,
   normalizeCo2Placa,
+  normalizeClaseVehiculo,
   type Co2KilometrajeRecord
 } from './co2KilometrajeDemo.ts';
 import {
@@ -1681,7 +1682,8 @@ export default function App() {
       (datasets.co2Kilometraje as Co2KilometrajeRecord[]).map((row) => ({
         ...row,
         placa: normalizeCo2Placa(row.placa),
-        combustible: normalizeCo2Fuel(row.combustible)
+        combustible: normalizeCo2Fuel(row.combustible),
+        claseVehiculo: normalizeClaseVehiculo(row.claseVehiculo)
       }))
     );
     setResiduosMantenimientoRecords(
@@ -5231,7 +5233,7 @@ export default function App() {
       year,
       month,
       placa: normalizeCo2Placa(co2Form.placa.trim()),
-      claseVehiculo: co2Form.claseVehiculo.trim() || 'SIN CLASE',
+      claseVehiculo: normalizeClaseVehiculo(co2Form.claseVehiculo),
       ciudad: co2Form.ciudad.trim() || 'SIN DATO',
       combustible: normalizeCo2Fuel(co2Form.combustible),
       kilometraje: Number(co2Form.kilometraje) || 0,
@@ -9358,46 +9360,6 @@ export default function App() {
                         );
                       })()}
                     </div>
-
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-left text-gray-500 border-b border-[#eaecf0]">
-                            <th className="px-2 py-2">Residuo</th>
-                            <th className="px-2 py-2 text-right">Cantidad</th>
-                            <th className="px-2 py-2 text-right">Aprovechado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {residuosByTipoStats.filter((row) => row.unidad === 'KILOS').length === 0 ? (
-                            <tr>
-                              <td colSpan={3} className="px-2 py-6 text-center text-gray-400">
-                                No hay datos con el filtro actual.
-                              </td>
-                            </tr>
-                          ) : (
-                            <>
-                              {residuosByTipoStats
-                                .filter((row) => row.unidad === 'KILOS')
-                                .map((row) => (
-                                  <tr key={row.residuo} className="border-b border-[#f1f3f6] hover:bg-gray-50">
-                                    <td className="px-2 py-2">{row.residuo}</td>
-                                    <td className="px-2 py-2 text-right">{Math.round(row.cantidad).toLocaleString('es-CO')} kg</td>
-                                    <td className="px-2 py-2 text-right">
-                                      {row.cantidad > 0 ? `${((row.aprovechado / row.cantidad) * 100).toFixed(1)}%` : '—'}
-                                    </td>
-                                  </tr>
-                                ))}
-                              <tr className="font-semibold text-[#00502c]">
-                                <td className="px-2 py-2">Total</td>
-                                <td className="px-2 py-2 text-right">{Math.round(residuosKpis.totalKg).toLocaleString('es-CO')} kg</td>
-                                <td className="px-2 py-2 text-right">{residuosKpis.pctAprovechado.toFixed(1)}%</td>
-                              </tr>
-                            </>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
                   </div>
                 )}
 
@@ -9420,18 +9382,26 @@ export default function App() {
                             </td>
                           </tr>
                         ) : (
-                          residuosByTipoStats.map((row) => (
-                            <tr key={`${row.residuo}-${row.unidad}`} className="border-b border-[#f1f3f6] hover:bg-gray-50">
-                              <td className="px-2 py-2">{row.residuo}</td>
-                              <td className="px-2 py-2">{row.unidad}</td>
-                              <td className="px-2 py-2 text-right">{Math.round(row.cantidad).toLocaleString('es-CO')}</td>
-                              <td className="px-2 py-2 text-right">
-                                {row.unidad === 'KILOS' && row.cantidad > 0
-                                  ? `${((row.aprovechado / row.cantidad) * 100).toFixed(1)}%`
-                                  : '—'}
-                              </td>
+                          <>
+                            {residuosByTipoStats.map((row) => (
+                              <tr key={`${row.residuo}-${row.unidad}`} className="border-b border-[#f1f3f6] hover:bg-gray-50">
+                                <td className="px-2 py-2">{row.residuo}</td>
+                                <td className="px-2 py-2">{row.unidad}</td>
+                                <td className="px-2 py-2 text-right">{Math.round(row.cantidad).toLocaleString('es-CO')}</td>
+                                <td className="px-2 py-2 text-right">
+                                  {row.unidad === 'KILOS' && row.cantidad > 0
+                                    ? `${((row.aprovechado / row.cantidad) * 100).toFixed(1)}%`
+                                    : '—'}
+                                </td>
+                              </tr>
+                            ))}
+                            <tr className="font-semibold text-[#00502c]">
+                              <td className="px-2 py-2">Total</td>
+                              <td className="px-2 py-2">KILOS</td>
+                              <td className="px-2 py-2 text-right">{Math.round(residuosKpis.totalKg).toLocaleString('es-CO')}</td>
+                              <td className="px-2 py-2 text-right">{residuosKpis.pctAprovechado.toFixed(1)}%</td>
                             </tr>
-                          ))
+                          </>
                         )}
                       </tbody>
                     </table>

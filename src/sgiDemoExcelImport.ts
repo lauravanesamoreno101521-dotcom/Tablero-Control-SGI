@@ -7,7 +7,7 @@ import {
 import { normalizeFormacionModality, normalizeFormacionClient } from './formacionInformeDemo.ts';
 import { normalizeMedicinaCity, normalizeMedicinaExamStatus } from './medicinaTrabajoDemo.ts';
 import { normalizePublicServiceSede } from './publicServicesDemo.ts';
-import { normalizeCo2Fuel, normalizeCo2Placa } from './co2KilometrajeDemo.ts';
+import { normalizeCo2Fuel, normalizeCo2Placa, normalizeClaseVehiculo } from './co2KilometrajeDemo.ts';
 import { normalizeResiduoUnidad } from './residuosMantenimientoDemo.ts';
 
 export type SgiDemoExcelService =
@@ -685,7 +685,7 @@ async function importCo2KilometrajeRecords(workbook: import('xlsx').WorkBook, XL
       if (!year || !month) return;
 
       const combustible = normalizeCo2Fuel(pickField(row, ['combustible']));
-      const claseVehiculo = pickField(row, ['clase vehiculo', 'clase de vehiculo']) || 'SIN CLASE';
+      const claseVehiculo = normalizeClaseVehiculo(pickField(row, ['clase vehiculo', 'clase de vehiculo']));
       const ciudad = pickField(row, ['ciudad']) || 'SIN DATO';
       const kilometraje = toNumberOrZero(pickField(row, ['kilometraje recorrido', 'kilometraje']));
       const galones = toNumberOrZero(pickField(row, ['consumio de combustible en galones', 'galones']));

@@ -52,6 +52,18 @@ export const normalizeCo2Fuel = (raw: string): string => {
 
 export const normalizeCo2Placa = (value: string) => value.trim().toUpperCase();
 
+const stripAccents = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+// Unifica variantes de una misma clase de vehículo que solo difieren en tildes (p. ej.
+// "CAMION" vs "CAMIÓN"), dejando siempre la forma con tilde como canónica. No toca otras
+// clases (como "CAMION DC ESTACA") que son legítimamente distintas.
+export const normalizeClaseVehiculo = (raw: string): string => {
+  const s = String(raw || '').trim().toUpperCase();
+  if (!s) return 'SIN CLASE';
+  if (stripAccents(s) === 'CAMION') return 'CAMIÓN';
+  return s;
+};
+
 // CO2 emitido (kg) = litros consumidos x factor de emisión del combustible.
 export const computeCo2Kg = (litros: number, combustible: string): number => {
   const factor = CO2_EMISSION_FACTORS[combustible];
@@ -65,6 +77,7 @@ const seedRecords: Co2KilometrajeRecord[] = (rawRecords as Omit<Co2KilometrajeRe
   ...row,
   placa: normalizeCo2Placa(row.placa),
   combustible: normalizeCo2Fuel(row.combustible),
+  claseVehiculo: normalizeClaseVehiculo(row.claseVehiculo),
   id: `co2-seed-${index + 1}`
 }));
 
