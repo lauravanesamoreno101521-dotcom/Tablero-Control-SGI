@@ -75,6 +75,7 @@ import {
   extractFormacionSpecialMetricsFromRecords,
   formatFormacionInformeCellValue,
   normalizeFormacionModality,
+  isFormacionEscuelaEmprestur,
   getFormacionTopicKey,
   countFormacionParticipatingPeople,
   normalizeFormacionClient,
@@ -3053,6 +3054,52 @@ export default function App() {
     () => extractFormacionSpecialMetricsFromRecords(formacionFilteredRecords),
     [formacionFilteredRecords]
   );
+
+  const formacionEscuelaParticipacion = useMemo(() => {
+    const people = new Set<string>();
+    formacionFilteredRecords.forEach((row) => {
+      if (isFormacionEscuelaEmprestur(row.topic) && row.cedula) people.add(row.cedula);
+    });
+    return people.size;
+  }, [formacionFilteredRecords]);
+
+  // Metas definidas para el tablero: participación en momentos de seguridad, participación en
+  // Escuela Emprestur, formación EN LÍNEA y capacitación VIRTUAL, todas calculadas como
+  // porcentaje del personal activo (mismo dato de "personal activo" que usa el Informe
+  // consolidado, formacionIndicatorsFromInforme.activeStaff).
+  const FORMACION_METAS_TARGETS = {
+    safetyMoments: 25,
+    escuelaEmprestur: 20,
+    enLinea: 15,
+    virtual: 80
+  };
+
+  const formacionMetasCumplimiento = useMemo(() => {
+    const activeStaff = formacionIndicatorsFromInforme.activeStaff;
+    const pct = (value: number) => (activeStaff ? (value / activeStaff) * 100 : 0);
+    const enLineaParticipants =
+      formacionModalityStats.find((row) => row.modality === 'EN LÍNEA')?.participantsCount ?? 0;
+    const virtualParticipants =
+      formacionModalityStats.find((row) => row.modality === 'VIRTUAL')?.participantsCount ?? 0;
+
+    const safetyPct = pct(formacionSpecialMetrics.safetyMomentsParticipation);
+    const escuelaPct = pct(formacionEscuelaParticipacion);
+    const enLineaPct = pct(enLineaParticipants);
+    const virtualPct = pct(virtualParticipants);
+
+    return {
+      activeStaff,
+      safetyMoments: { pct: safetyPct, target: FORMACION_METAS_TARGETS.safetyMoments, cumple: safetyPct >= FORMACION_METAS_TARGETS.safetyMoments },
+      escuelaEmprestur: { pct: escuelaPct, target: FORMACION_METAS_TARGETS.escuelaEmprestur, cumple: escuelaPct >= FORMACION_METAS_TARGETS.escuelaEmprestur },
+      enLinea: { pct: enLineaPct, target: FORMACION_METAS_TARGETS.enLinea, cumple: enLineaPct >= FORMACION_METAS_TARGETS.enLinea },
+      virtual: { pct: virtualPct, target: FORMACION_METAS_TARGETS.virtual, cumple: virtualPct >= FORMACION_METAS_TARGETS.virtual }
+    };
+  }, [
+    formacionIndicatorsFromInforme.activeStaff,
+    formacionSpecialMetrics.safetyMomentsParticipation,
+    formacionEscuelaParticipacion,
+    formacionModalityStats
+  ]);
 
   const formacionDbFilterOptions = useMemo(() => {
     const uniqueSorted = (values: string[]) =>
@@ -11184,6 +11231,52 @@ export default function App() {
                             <div key={`form-modality-${row.modality}`} className="bg-white border border-[#eaecf0] rounded-soft p-3 text-xs">
                               <div className="font-semibold text-[#191c1d]">{row.modality}</div>
                               <div className="text-gray-500 mt-1">{row.sessionsCount} sesiones • {row.participantsCount} participantes • {Math.round(row.hhf)} HHF</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                          <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Cumplimiento de metas</p>
+                          <p className="text-[10px] text-gray-500">
+                            % sobre personal activo ({Math.round(formacionMetasCumplimiento.activeStaff)})
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                          {([
+                            { key: 'safetyMoments', label: 'Participación momentos de seguridad', ...formacionMetasCumplimiento.safetyMoments },
+                            { key: 'escuelaEmprestur', label: 'Participación Escuela Emprestur', ...formacionMetasCumplimiento.escuelaEmprestur },
+                            { key: 'enLinea', label: 'Formación EN LÍNEA', ...formacionMetasCumplimiento.enLinea },
+                            { key: 'virtual', label: 'Capacitación VIRTUAL', ...formacionMetasCumplimiento.virtual }
+                          ] as const).map((meta) => (
+                            <div
+                              key={meta.key}
+                              className={`rounded-soft p-3.5 border ${
+                                meta.cumple
+                                  ? 'bg-emerald-50 border-emerald-200'
+                                  : 'bg-red-50 border-red-200'
+                              }`}
+                            >
+                              <p
+                                className={`text-[11px] font-semibold ${meta.cumple ? 'text-[#00502c]' : 'text-[#93000a]'}`}
+                              >
+                                {meta.label}
+                              </p>
+                              <p className="text-[10px] text-gray-500 mt-0.5">Meta ≥{meta.target}%</p>
+                              <div className="flex items-center justify-between mt-1.5">
+                                <span className={`text-lg font-bold ${meta.cumple ? 'text-[#00502c]' : 'text-[#93000a]'}`}>
+                                  {meta.pct.toFixed(1)}%
+                                </span>
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                    meta.cumple
+                                      ? 'bg-emerald-100 text-[#00502c] border border-emerald-200'
+                                      : 'bg-red-100 text-[#93000a] border border-red-200'
+                                  }`}
+                                >
+                                  {meta.cumple ? 'Cumple' : 'No cumple'}
+                                </span>
+                              </div>
                             </div>
                           ))}
                         </div>

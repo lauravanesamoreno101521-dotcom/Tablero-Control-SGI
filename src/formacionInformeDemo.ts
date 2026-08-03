@@ -86,6 +86,9 @@ const normalizeFormacionText = (value: string) =>
 export const isFormacionMomentoSeguridad = (topic: string) =>
   normalizeFormacionText(topic).includes('MOMENTO DE SEGURIDAD');
 
+export const isFormacionEscuelaEmprestur = (topic: string) =>
+  normalizeFormacionText(topic).includes('ESCUELA EMPRESTUR');
+
 export const isFormacionVirtualModality = (modality: string) =>
   normalizeFormacionText(modality).includes('VIRTUAL');
 
