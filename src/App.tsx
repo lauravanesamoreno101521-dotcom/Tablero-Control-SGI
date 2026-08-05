@@ -10504,6 +10504,7 @@ export default function App() {
                                 { label: 'Acc. incapacitantes', key: 'disablingAccidents' as const },
                                 { label: 'Acc. sin incapacidad', key: 'nonDisablingAccidents' as const },
                                 { label: 'Siniestros viales laborales', key: 'laborRoadAccidents' as const },
+                                { label: '# Eventos Ocurridos', key: 'bdEventsOccurred' as const },
                                 { label: '# Eventos Reportados', key: 'bdEvents' as const }
                               ].map((row) => (
                                 <tr key={row.key}>
@@ -10519,12 +10520,50 @@ export default function App() {
                           </table>
                         </div>
                       </div>
+                      <div className="bg-[#f8f9fa] border border-[#eaecf0] rounded-soft p-4">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">
+                          # Eventos Ocurridos vs # Eventos Reportados
+                        </p>
+                        <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
+                          <div className="overflow-x-auto overflow-y-visible py-2">
+                            <div className="flex gap-3 justify-between min-w-max px-1">
+                              {accidentalidadMonthlyTrend.map((month) => {
+                                const maxValue = Math.max(
+                                  ...accidentalidadMonthlyTrend.map((item) => Math.max(item.bdEventsOccurred, item.bdEvents)),
+                                  1
+                                );
+                                return (
+                                  <div key={month.label} className="min-w-[90px] flex flex-col items-center">
+                                    {renderSgiGroupedVerticalBars(
+                                      [
+                                        {
+                                          value: month.bdEventsOccurred,
+                                          color: '#006b3d',
+                                          title: `Ocurridos: ${month.bdEventsOccurred}`
+                                        },
+                                        {
+                                          value: month.bdEvents,
+                                          color: '#ba1a1a',
+                                          title: `Reportados: ${month.bdEvents}`
+                                        }
+                                      ],
+                                      maxValue,
+                                      { barWidthClass: 'w-[22px]', columnWidthClass: 'w-[28px]' }
+                                    )}
+                                    <div className="text-[11px] uppercase font-semibold text-gray-600 mt-2">{month.label}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <div className="mt-3 flex items-center gap-4 text-xs text-gray-600">
+                            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#006b3d]" /> Ocurridos (Fecha evento)</span>
+                            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#ba1a1a]" /> Reportados (Fecha reporte)</span>
+                          </div>
+                        </div>
+                      </div>
                       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                         {[
-                          {
-                            title: '# Eventos Reportados',
-                            picker: (month: (typeof accidentalidadMonthlyTrend)[number]) => month.bdEvents
-                          },
                           {
                             title: 'Incidentes laborales (informe)',
                             picker: (month: (typeof accidentalidadMonthlyTrend)[number]) => month.laborIncidents

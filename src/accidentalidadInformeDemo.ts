@@ -170,6 +170,12 @@ const parseAccidentalidadReportDate = (record: AccidentalidadRecord): Date | nul
   return Number.isNaN(reportDate.getTime()) ? null : reportDate;
 };
 
+const parseAccidentalidadEventDate = (record: AccidentalidadRecord): Date | null => {
+  if (!record.eventDate) return null;
+  const eventDate = new Date(`${record.eventDate}T00:00:00`);
+  return Number.isNaN(eventDate.getTime()) ? null : eventDate;
+};
+
 export const countAccidentalidadBdEventsByReportDate = (
   records: AccidentalidadRecord[],
   informeYear: number,
@@ -203,6 +209,20 @@ const countAccidentalidadBdEventsByReportMonth = (
     const reportDate = parseAccidentalidadReportDate(row);
     if (!reportDate) return false;
     return reportDate.getFullYear() === year && reportDate.getMonth() + 1 === month;
+  }).length;
+
+// Igual que countAccidentalidadBdEventsByReportMonth pero usando la Fecha evento (cuándo
+// ocurrió el evento) en lugar de la Fecha reporte (cuándo se reportó). Los registros sin
+// Fecha evento diligenciada no se cuentan en ningún mes hasta que se complete el dato.
+const countAccidentalidadBdEventsByEventMonth = (
+  records: AccidentalidadRecord[],
+  year: number,
+  month: number
+): number =>
+  records.filter((row) => {
+    const eventDate = parseAccidentalidadEventDate(row);
+    if (!eventDate) return false;
+    return eventDate.getFullYear() === year && eventDate.getMonth() + 1 === month;
   }).length;
 
 export const buildAccidentalidadIndicators = (
@@ -298,6 +318,7 @@ export type AccidentalidadMonthlyTrendRow = {
   nonDisablingAccidents: number;
   laborRoadAccidents: number;
   bdEvents: number;
+  bdEventsOccurred: number;
 };
 
 export const buildAccidentalidadMonthlyTrend = (
@@ -317,7 +338,8 @@ export const buildAccidentalidadMonthlyTrend = (
     disablingAccidents: toNumberOrZero(disablingRow?.[index + 1]),
     nonDisablingAccidents: toNumberOrZero(nonDisablingRow?.[index + 1]),
     laborRoadAccidents: toNumberOrZero(roadLaborRow?.[index + 1]),
-    bdEvents: countAccidentalidadBdEventsByReportMonth(bdRecords, year, index + 1)
+    bdEvents: countAccidentalidadBdEventsByReportMonth(bdRecords, year, index + 1),
+    bdEventsOccurred: countAccidentalidadBdEventsByEventMonth(bdRecords, year, index + 1)
   }));
 };
 
