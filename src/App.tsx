@@ -10543,7 +10543,8 @@ export default function App() {
                                         },
                                         {
                                           value: month.bdEvents,
-                                          color: '#ba1a1a',
+                                          color: '#ffd000',
+                                          labelColor: '#6e5900',
                                           title: `Reportados: ${month.bdEvents}`
                                         }
                                       ],
@@ -10558,7 +10559,7 @@ export default function App() {
                           </div>
                           <div className="mt-3 flex items-center gap-4 text-xs text-gray-600">
                             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#006b3d]" /> Ocurridos (Fecha evento)</span>
-                            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#ba1a1a]" /> Reportados (Fecha reporte)</span>
+                            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#ffd000]" /> Reportados (Fecha reporte)</span>
                           </div>
                         </div>
                       </div>
