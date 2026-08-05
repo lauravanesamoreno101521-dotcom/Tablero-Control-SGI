@@ -15,6 +15,7 @@ export type SgiDemoExcelService =
   | 'Comportamientos inseguros'
   | 'Incapacidades'
   | 'Formación'
+  | 'Accidentalidad'
   | 'Medicina del trabajo'
   | 'Consumo servicios públicos'
   | 'CO2 por kilometraje'
@@ -278,6 +279,8 @@ export async function importDemoExcelForService(
       return importIncapRecords(workbook, XLSX, options.incapDxMap ?? new Map());
     case 'Comportamientos inseguros':
       return importUnsafeRecords(workbook, XLSX);
+    case 'Accidentalidad':
+      return importAccidentalidadRecords(workbook, XLSX);
     case 'Acompañamiento presencial':
       return importSstRecords(workbook, XLSX);
     case 'Medicina del trabajo':
@@ -479,6 +482,61 @@ async function importUnsafeRecords(workbook: import('xlsx').WorkBook, XLSX: type
 
   if (records.length === 0) {
     throw new Error('El Excel no contiene registros válidos de comportamientos inseguros.');
+  }
+
+  return { count: records.length, records };
+}
+
+// El Excel de Accidentalidad (base de datos FT-GEI-SO-017) trae un renglón por cada evento.
+// Se buscan las columnas por nombre flexible (igual que los demás módulos) para tolerar
+// variaciones de encabezado entre archivos.
+async function importAccidentalidadRecords(workbook: import('xlsx').WorkBook, XLSX: typeof import('xlsx')) {
+  const sheet = findSheetByNames(workbook, ['BD accidentalidad', 'Accidentalidad', 'BD_AT_SV_IT', 'bd_AT_SV_IT']);
+  if (!sheet) throw new Error('No se encontró la hoja de accidentalidad.');
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+
+  const records = rows
+    .map((row, index) => {
+      const rawEventDate = pickRawField(row, ['fecha evento', 'fecha del evento']);
+      const eventDate = parseUnknownDate(rawEventDate) ?? parseSpanishDate(pickField(row, ['fecha evento', 'fecha del evento']));
+      const rawReportDate = pickRawField(row, ['fecha reporte', 'fecha de reporte']);
+      const reportDate = parseUnknownDate(rawReportDate) ?? parseSpanishDate(pickField(row, ['fecha reporte', 'fecha de reporte']));
+      const month = eventDate ? eventDate.getMonth() + 1 : 0;
+      const year = eventDate ? eventDate.getFullYear() : 0;
+      const cedula = pickField(row, ['cedula']);
+      const employeeName = normalizePersonName(pickField(row, ['empleado', 'nombre completo', 'nombre']));
+
+      return {
+        id: `acc-${Date.now()}-${index}`,
+        reportDate: reportDate ? reportDate.toISOString().slice(0, 10) : '',
+        reportDateLabel: reportDate ? formatShortDate(reportDate) : pickField(row, ['fecha reporte', 'fecha de reporte']),
+        eventDate: eventDate ? eventDate.toISOString().slice(0, 10) : '',
+        eventDateLabel: eventDate ? formatShortDate(eventDate) : pickField(row, ['fecha evento', 'fecha del evento']),
+        month,
+        year,
+        manager: pickField(row, ['gestor']),
+        cedula,
+        employeeName,
+        plate: pickField(row, ['placa']),
+        client: pickField(row, ['contrato o cliente', 'cliente']),
+        duringService: pickField(row, ['durante servicio', 'durante el servicio']),
+        characteristic: pickField(row, ['caracteristica']),
+        severity: pickField(row, ['gravedad']),
+        lossLevel: pickField(row, ['nivel de perdida', 'nivel perdida']),
+        contractType: pickField(row, ['tipo contratacion', 'tipo de contratacion']),
+        linkType: pickField(row, ['tipo vinculacion', 'tipo de vinculacion']),
+        role: pickField(row, ['cargo']),
+        basicCause: pickField(row, ['causa basica']),
+        immediateCause: pickField(row, ['causa inmediata']),
+        riskDescription: pickField(row, ['descripcion riesgo', 'descripcion del riesgo', 'descripcion'])
+      };
+    })
+    .filter((row) => row.eventDate && row.cedula && row.employeeName);
+
+  if (records.length === 0) {
+    throw new Error(
+      'El Excel no contiene registros válidos de accidentalidad. Verifica que tenga columnas Fecha evento, Cédula y Empleado.'
+    );
   }
 
   return { count: records.length, records };

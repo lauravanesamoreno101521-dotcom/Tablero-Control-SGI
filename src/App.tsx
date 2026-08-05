@@ -4840,6 +4840,33 @@ export default function App() {
     };
   };
 
+  // El Excel de Accidentalidad no trae un identificador único por fila, así que la llave de
+  // deduplicación combina cédula + fecha del evento + placa + descripción del riesgo: suficiente
+  // para no duplicar si el mismo archivo se carga dos veces.
+  const buildAccidentalidadRecordKey = (record: AccidentalidadRecord) =>
+    [record.cedula, record.eventDate, record.plate, record.riskDescription].join('|');
+
+  const mergeAccidentalidadRecords = (existing: AccidentalidadRecord[], imported: AccidentalidadRecord[]) => {
+    const existingKeys = new Set(existing.map(buildAccidentalidadRecordKey));
+    const toAdd: AccidentalidadRecord[] = [];
+
+    imported.forEach((record, index) => {
+      const key = buildAccidentalidadRecordKey(record);
+      if (existingKeys.has(key)) return;
+      existingKeys.add(key);
+      toAdd.push({
+        ...record,
+        id: `acc-${Date.now()}-${index}`
+      });
+    });
+
+    return {
+      merged: [...existing, ...toAdd],
+      added: toAdd.length,
+      skipped: imported.length - toAdd.length
+    };
+  };
+
   const handleRestoreFormacionInitialData = () => {
     const confirmed = window.confirm(
       '¿Restaurar la base de datos al ejemplo inicial? Se eliminarán los registros agregados o editados en esta sesión (incluidos cargues de Excel).'
@@ -5621,6 +5648,7 @@ export default function App() {
       'Comportamientos inseguros',
       'Incapacidades',
       'Formación',
+      'Accidentalidad',
       'Medicina del trabajo',
       'Consumo servicios públicos',
       'CO2 por kilometraje',
@@ -5660,6 +5688,19 @@ export default function App() {
         const outcome = mergeFormacionRecords(formacionRecords, imported);
         setFormacionRecords(outcome.merged);
         resetFormacionForm();
+        setSgiStartDate('');
+        setSgiEndDate('');
+        alert(
+          `Se agregaron ${outcome.added} registros nuevos desde "${file.name}"` +
+            `${outcome.skipped ? ` (${outcome.skipped} duplicados omitidos)` : ''}. ` +
+            `Total en base de datos: ${outcome.merged.length}.`
+        );
+        return;
+      } else if (service === 'Accidentalidad') {
+        const imported = (result.records as AccidentalidadRecord[]).map(withNormalizedAccidentalidadRecord);
+        const outcome = mergeAccidentalidadRecords(accidentalidadRecords, imported);
+        setAccidentalidadRecords(outcome.merged);
+        resetAccidentalidadForm();
         setSgiStartDate('');
         setSgiEndDate('');
         alert(
@@ -10296,7 +10337,7 @@ export default function App() {
                   )}
                   <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6 gap-3">
                     <div className="bg-white border border-[#eaecf0] rounded-soft p-3">
-                      <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Eventos en BD</p>
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold"># Eventos Reportados</p>
                       <p className="text-2xl font-bold text-[#191c1d] mt-1">{accidentalidadIndicators.totalEventsBd}</p>
                       <p className="text-[10px] text-gray-500 mt-1">bd_AT_SV_IT_2026</p>
                     </div>
@@ -10463,7 +10504,7 @@ export default function App() {
                                 { label: 'Acc. incapacitantes', key: 'disablingAccidents' as const },
                                 { label: 'Acc. sin incapacidad', key: 'nonDisablingAccidents' as const },
                                 { label: 'Siniestros viales laborales', key: 'laborRoadAccidents' as const },
-                                { label: 'Eventos BD', key: 'bdEvents' as const }
+                                { label: '# Eventos Reportados', key: 'bdEvents' as const }
                               ].map((row) => (
                                 <tr key={row.key}>
                                   <td className="px-3 py-2 font-medium text-[#191c1d]">{row.label}</td>
@@ -10481,7 +10522,7 @@ export default function App() {
                       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                         {[
                           {
-                            title: 'Eventos registrados en BD',
+                            title: '# Eventos Reportados',
                             picker: (month: (typeof accidentalidadMonthlyTrend)[number]) => month.bdEvents
                           },
                           {
@@ -12672,13 +12713,7 @@ export default function App() {
                       Ingreso base de datos · bd_AT_SV_IT_2026
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleRestoreAccidentalidadInitialData}
-                        className="px-3 py-1.5 rounded-soft text-xs font-semibold border border-[#d6dce5] bg-white text-gray-700 hover:bg-gray-50 transition-colors"
-                      >
-                        Restaurar BD inicial
-                      </button>
+                      <DemoExcelUploadButton onFileSelected={handleDemoExcelUpload} loading={isDemoExcelLoading} />
                       <div className="text-[11px] text-gray-500">
                         {accidentalidadDbDisplayRecords.length} registro(s)
                       </div>
